@@ -13,6 +13,8 @@
     "vite": "^6.1.0"
   },
   "dependencies": {
-    "phaser": "v3.87.0"
+    "@tailwindcss/vite": "^4.0.6",
+    "phaser": "v3.87.0",
+    "tailwindcss": "^4.0.6"
   }
 }
