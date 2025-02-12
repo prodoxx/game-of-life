@@ -29,6 +29,34 @@ export class Game extends Scene {
     this.setupInteraction();
   }
 
+  private setupGenerationKeyboardControls(): void {
+    const keyboard = this.input.keyboard;
+    if (!keyboard) return;
+
+    // prevent default browser behavior for game controls
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space" || e.code === "Escape") {
+        e.preventDefault();
+      }
+    });
+
+    // space to play/pause
+    keyboard.on("keydown-SPACE", () => {
+      if (this.isRunning && this.isPaused) {
+        this.resumeGenerations();
+      } else if (this.isRunning && !this.isPaused) {
+        this.pauseGenerations();
+      } else {
+        this.startGenerations();
+      }
+    });
+
+    // esc to stop
+    keyboard.on("keydown-ESC", () => {
+      this.stopGenerations();
+    });
+  }
+
   // for convenience
   private handleZoom(scaleDelta: number, pointer: Phaser.Input.Pointer): void {
     // prevent zooming out beyond initial scale (1)
@@ -108,6 +136,8 @@ export class Game extends Scene {
       const zoomFactor = deltaY > 0 ? 0.98 : 1.02;
       this.handleZoom(zoomFactor, pointer);
     });
+
+    this.setupGenerationKeyboardControls();
   }
 
   private createGrid(): void {
