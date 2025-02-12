@@ -5,8 +5,8 @@ export const GAME_HEIGHT = typeof window !== "undefined" ? window.innerHeight : 
 export const GENERATION_TICK_MS = 1000;
 
 // grid dimensions (fixed size that will be centered)
-export const GRID_WIDTH = 1024;
-export const GRID_HEIGHT = 768;
+export const GRID_WIDTH = 800;
+export const GRID_HEIGHT = 600;
 
 // calculate grid size to maintain square cells that fill the grid area
 export const CELL_SIZE = 32;
