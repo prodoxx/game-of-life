@@ -17,14 +17,39 @@ export class Game extends Scene {
   private generationTimer?: Phaser.Time.TimerEvent;
   private isRunning: boolean = false;
   private isPaused: boolean = false;
+  private gridContainer!: Phaser.GameObjects.Container;
 
   constructor() {
     super("Game");
   }
 
   create() {
+    this.gridContainer = this.add.container(0, 0);
     this.createGrid();
     this.setupInteraction();
+  }
+
+  // for convenience
+  private handleZoom(scaleDelta: number, pointer: Phaser.Input.Pointer): void {
+    // prevent zooming out beyond initial scale (1)
+    if (scaleDelta < 1 && this.gridContainer.scale <= 1) {
+      return;
+    }
+
+    const newScale = Phaser.Math.Clamp(this.gridContainer.scale * scaleDelta, 1, 1.8);
+
+    // convert pointer position to world space before zoom
+    const worldPoint = this.gridContainer.getWorldTransformMatrix().invert().transformPoint(pointer.x, pointer.y);
+
+    // update scale
+    this.gridContainer.setScale(newScale);
+
+    // convert same pointer position back to world space after scale change
+    const newWorldPoint = this.gridContainer.getWorldTransformMatrix().invert().transformPoint(pointer.x, pointer.y);
+
+    // zoom towards pointer
+    this.gridContainer.x += (newWorldPoint.x - worldPoint.x) * newScale;
+    this.gridContainer.y += (newWorldPoint.y - worldPoint.y) * newScale;
   }
 
   startGenerations(): void {
@@ -71,11 +96,34 @@ export class Game extends Scene {
     }
   }
 
+  private setupInteraction(): void {
+    this.input.on("gameobjectdown", (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.Rectangle) => {
+      const row = gameObject.getData("row");
+      const col = gameObject.getData("col");
+      this.toggleCell(row, col);
+    });
+
+    this.input.on("wheel", (pointer: Phaser.Input.Pointer, _gameObjects: any, _deltaX: number, deltaY: number) => {
+      // use a smaller zoom factor for slower zooming
+      const zoomFactor = deltaY > 0 ? 0.98 : 1.02;
+      this.handleZoom(zoomFactor, pointer);
+    });
+  }
+
   private createGrid(): void {
     // validate grid dimensions
     if (GRID_ROWS <= 0 || GRID_COLS <= 0) {
       throw new Error("Grid dimensions must be positive numbers");
     }
+
+    // calculate offsets to center the grid
+    const totalGridWidth = GRID_COLS * CELL_SIZE;
+    const totalGridHeight = GRID_ROWS * CELL_SIZE;
+    const offsetX = (this.scale.width - totalGridWidth) / 2;
+    const offsetY = (this.scale.height - totalGridHeight) / 2;
+
+    // set initial container position to center
+    this.gridContainer.setPosition(offsetX, offsetY);
 
     for (let row = 0; row < GRID_ROWS; row++) {
       this.grid[row] = [];
@@ -92,20 +140,14 @@ export class Game extends Scene {
         cell.setData("row", row);
         cell.setData("col", col);
 
+        this.gridContainer.add(cell);
+
         this.grid[row][col] = {
           isAlive: false,
           sprite: cell,
         };
       }
     }
-  }
-
-  private setupInteraction(): void {
-    this.input.on("gameobjectdown", (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.Rectangle) => {
-      const row = gameObject.getData("row");
-      const col = gameObject.getData("col");
-      this.toggleCell(row, col);
-    });
   }
 
   private toggleCell(row: number, col: number): void {
