@@ -76,6 +76,18 @@ const mockScene = class MockScene {
       height: 600,
     },
   };
+  time = {
+    addEvent: vi
+      .fn()
+      .mockImplementation((config: { delay: number; callback: () => void; callbackScope: any; loop: boolean }) => {
+        const destroyFn = vi.fn();
+        return {
+          destroy: destroyFn,
+          isDestroyed: false,
+          ...config,
+        };
+      }),
+  };
 };
 
 export const mockPhaser = {

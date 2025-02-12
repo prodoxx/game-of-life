@@ -295,4 +295,181 @@ describe("Game Scene", () => {
       });
     });
   });
+
+  describe("Game Controls", () => {
+    describe("Happy Paths", () => {
+      it("happy: should start generations when not running", () => {
+        expect(game["isRunning"]).toBe(false);
+        game.startGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["generationTimer"]).toBeDefined();
+      });
+
+      it("happy: should not create multiple timers when starting generations multiple times", () => {
+        game.startGenerations();
+        const firstTimer = game["generationTimer"];
+        const firstAddEventCall = (game.time.addEvent as Mock).mock.calls.length;
+
+        game.startGenerations();
+        const secondTimer = game["generationTimer"];
+        const secondAddEventCall = (game.time.addEvent as Mock).mock.calls.length;
+
+        expect(firstTimer).toBe(secondTimer);
+        expect(secondAddEventCall).toBe(firstAddEventCall);
+        expect(game["isRunning"]).toBe(true);
+      });
+
+      it("happy: should stop generations when running", () => {
+        game.startGenerations();
+        expect(game["isRunning"]).toBe(true);
+        game.stopGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("happy: should toggle generations on when not running", () => {
+        expect(game["isRunning"]).toBe(false);
+        game.toggleGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["generationTimer"]).toBeDefined();
+      });
+
+      it("happy: should toggle generations off when running", () => {
+        game.startGenerations();
+        expect(game["isRunning"]).toBe(true);
+        game.toggleGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("happy: should use correct tick interval from constants", () => {
+        game.startGenerations();
+        expect(game["generationTimer"]?.delay).toBe(constants.GENERATION_TICK_MS);
+      });
+
+      it("happy: should pause generations when running", () => {
+        game.startGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["isPaused"]).toBe(false);
+
+        game.pauseGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["isPaused"]).toBe(true);
+        expect(game["generationTimer"]?.paused).toBe(true);
+      });
+
+      it("happy: should resume generations when paused", () => {
+        game.startGenerations();
+        game.pauseGenerations();
+        expect(game["isPaused"]).toBe(true);
+
+        game.resumeGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["isPaused"]).toBe(false);
+        expect(game["generationTimer"]?.paused).toBe(false);
+      });
+
+      it("happy: should maintain game state while paused", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+
+        game.startGenerations();
+        game.pauseGenerations();
+
+        const grid = (game as unknown as { grid: Cell[][] }).grid;
+        expect(grid[1][1].isAlive).toBe(true);
+        expect(grid[1][2].isAlive).toBe(true);
+      });
+    });
+
+    describe("Sad Paths", () => {
+      it("sad: should handle stopping generations when not running", () => {
+        expect(game["isRunning"]).toBe(false);
+        game.stopGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("sad: should handle timer destruction when timer is already destroyed", () => {
+        game.startGenerations();
+        const timer = game["generationTimer"];
+        const destroyFn = timer?.destroy as Mock;
+
+        // verify destroy was called
+        destroyFn();
+        expect(destroyFn).toHaveBeenCalled();
+
+        game.stopGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("sad: should handle rapid start/stop toggling", () => {
+        // verify initial state
+        expect(game["isRunning"]).toBe(false);
+
+        // toggle 10 times and verify each state change
+        for (let i = 0; i < 10; i++) {
+          game.toggleGenerations();
+          // on odd iterations (1,3,5,7,9) should be running
+          // on even iterations (2,4,6,8,10) should not be running
+          const expectedState = (i + 1) % 2 === 1;
+          expect(game["isRunning"]).toBe(expectedState);
+          if (expectedState) {
+            expect(game["generationTimer"]).toBeDefined();
+          } else {
+            expect(game["generationTimer"]).toBeUndefined();
+          }
+        }
+      });
+
+      it("sad: should handle undefined timer when stopping generations", () => {
+        game.startGenerations();
+        game["generationTimer"] = undefined;
+        game.stopGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("sad: should not pause when not running", () => {
+        game.pauseGenerations();
+        expect(game["isRunning"]).toBe(false);
+        expect(game["isPaused"]).toBe(false);
+        expect(game["generationTimer"]).toBeUndefined();
+      });
+
+      it("sad: should not resume when not paused", () => {
+        game.startGenerations();
+        game.resumeGenerations();
+        expect(game["isRunning"]).toBe(true);
+        expect(game["isPaused"]).toBe(false);
+      });
+
+      it("sad: should handle pause/resume when timer is undefined", () => {
+        game.startGenerations();
+        game["generationTimer"] = undefined;
+
+        game.pauseGenerations();
+        expect(game["isPaused"]).toBe(false);
+
+        game.resumeGenerations();
+        expect(game["isPaused"]).toBe(false);
+      });
+
+      it("sad: should handle multiple pause/resume toggles", () => {
+        game.startGenerations();
+
+        for (let i = 0; i < 5; i++) {
+          game.pauseGenerations();
+          expect(game["isPaused"]).toBe(true);
+          expect(game["generationTimer"]?.paused).toBe(true);
+
+          game.resumeGenerations();
+          expect(game["isPaused"]).toBe(false);
+          expect(game["generationTimer"]?.paused).toBe(false);
+        }
+      });
+    });
+  });
 });
