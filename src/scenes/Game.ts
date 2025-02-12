@@ -8,11 +8,15 @@ import {
   DEAD_COLOR,
   NEIGHBOR_OFFSETS,
   GAME_RULES,
+  GENERATION_TICK_MS,
 } from "../constants";
 import { Cell } from "../types";
 
 export class Game extends Scene {
   private grid: Cell[][] = [];
+  private generationTimer?: Phaser.Time.TimerEvent;
+  private isRunning: boolean = false;
+  private isPaused: boolean = false;
 
   constructor() {
     super("Game");
@@ -21,6 +25,50 @@ export class Game extends Scene {
   create() {
     this.createGrid();
     this.setupInteraction();
+  }
+
+  startGenerations(): void {
+    if (!this.isRunning) {
+      this.isRunning = true;
+      this.isPaused = false;
+      this.generationTimer = this.time.addEvent({
+        delay: GENERATION_TICK_MS,
+        callback: this.nextGeneration,
+        callbackScope: this,
+        loop: true,
+      });
+    }
+  }
+
+  stopGenerations(): void {
+    if (this.isRunning) {
+      this.isRunning = false;
+      this.isPaused = false;
+      this.generationTimer?.destroy();
+      this.generationTimer = undefined;
+    }
+  }
+
+  pauseGenerations(): void {
+    if (this.isRunning && !this.isPaused && this.generationTimer) {
+      this.isPaused = true;
+      this.generationTimer.paused = true;
+    }
+  }
+
+  resumeGenerations(): void {
+    if (this.isRunning && this.isPaused && this.generationTimer) {
+      this.isPaused = false;
+      this.generationTimer.paused = false;
+    }
+  }
+
+  toggleGenerations(): void {
+    if (this.isRunning) {
+      this.stopGenerations();
+    } else {
+      this.startGenerations();
+    }
   }
 
   private createGrid(): void {
