@@ -1,8 +1,11 @@
 import { vi } from "vitest";
 import { mockPhaser } from "./mocks/phaser";
 
-// mock Phaser module
 vi.mock("phaser", () => mockPhaser);
+
+(global as any).Phaser = {
+  Math: mockPhaser.Math,
+};
 
 // mock constants module with default values
 vi.mock("../constants", () => ({

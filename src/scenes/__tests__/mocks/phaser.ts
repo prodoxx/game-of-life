@@ -41,7 +41,8 @@ export class MockRectangle implements MockRectangleProps {
   }
 
   getData(key: string): unknown {
-    return this.data.get(key);
+    const value = this.data.get(key);
+    return value;
   }
 
   setFillStyle(color: number): this {
@@ -60,15 +61,59 @@ export interface MockPointerEvent {
   y: number;
 }
 
+// mock Phaser.GameObjects.Container
+export class MockContainer {
+  x: number = 0;
+  y: number = 0;
+  scale: number = 1;
+  children: any[] = [];
+
+  constructor(scene: any, x: number = 0, y: number = 0) {
+    this.x = x;
+    this.y = y;
+  }
+
+  setPosition(x: number, y: number): this {
+    this.x = x;
+    this.y = y;
+    return this;
+  }
+
+  setScale(scale: number): this {
+    this.scale = scale;
+    return this;
+  }
+
+  add(child: any): this {
+    this.children.push(child);
+    return this;
+  }
+
+  getWorldTransformMatrix() {
+    return {
+      invert: () => ({
+        transformPoint: (x: number, y: number) => ({ x, y }),
+      }),
+    };
+  }
+}
+
 // mock Phaser.Scene
 const mockScene = class MockScene {
   add = {
     rectangle: vi.fn().mockImplementation((x: number, y: number, width: number, height: number, color: number) => {
       return new MockRectangle(x, y, width, height, color);
     }),
+    container: vi.fn().mockImplementation((x: number = 0, y: number = 0) => {
+      return new MockContainer(this, x, y);
+    }),
   };
   input = {
     on: vi.fn(),
+  };
+  scale = {
+    width: 800,
+    height: 600,
   };
   cameras = {
     main: {
@@ -92,4 +137,9 @@ const mockScene = class MockScene {
 
 export const mockPhaser = {
   Scene: mockScene,
+  Math: {
+    Clamp: (value: number, min: number, max: number): number => {
+      return Math.min(Math.max(value, min), max);
+    },
+  },
 };
