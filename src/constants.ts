@@ -1,13 +1,17 @@
 import { Offset, GameRule } from "./types";
 
-export const GAME_WIDTH = 1024;
-export const GAME_HEIGHT = 768;
+export const GAME_WIDTH = typeof window !== "undefined" ? window.innerWidth : 1024;
+export const GAME_HEIGHT = typeof window !== "undefined" ? window.innerHeight : 768;
 export const GENERATION_TICK_MS = 1000;
 
-// calculate grid size to maintain square cells that fill the screen
+// grid dimensions (fixed size that will be centered)
+export const GRID_WIDTH = 1024;
+export const GRID_HEIGHT = 768;
+
+// calculate grid size to maintain square cells that fill the grid area
 export const CELL_SIZE = 32;
-export const GRID_COLS = Math.floor(GAME_WIDTH / CELL_SIZE);
-export const GRID_ROWS = Math.floor(GAME_HEIGHT / CELL_SIZE);
+export const GRID_COLS = Math.floor(GRID_WIDTH / CELL_SIZE);
+export const GRID_ROWS = Math.floor(GRID_HEIGHT / CELL_SIZE);
 
 // colors
 export const GRID_BORDER_COLOR = 0x999999; // gray

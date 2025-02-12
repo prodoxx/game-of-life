@@ -12,7 +12,7 @@ const config: Types.Core.GameConfig = {
   parent: "game-container",
   backgroundColor: BACKGROUND_COLOR,
   scale: {
-    mode: Phaser.Scale.NONE,
+    mode: Phaser.Scale.RESIZE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: GAME_WIDTH,
     height: GAME_HEIGHT,
@@ -20,4 +20,11 @@ const config: Types.Core.GameConfig = {
   scene: [Boot, Preloader, MainGame],
 };
 
-export default new Game(config);
+const game = new Game(config);
+
+// handle window resizing
+window.addEventListener("resize", () => {
+  game.scale.resize(window.innerWidth, window.innerHeight);
+});
+
+export default game;
