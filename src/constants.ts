@@ -2,6 +2,7 @@ import { Offset, GameRule } from "./types";
 
 export const GAME_WIDTH = 1024;
 export const GAME_HEIGHT = 768;
+export const GENERATION_TICK_MS = 1000;
 
 // calculate grid size to maintain square cells that fill the screen
 export const CELL_SIZE = 32;
