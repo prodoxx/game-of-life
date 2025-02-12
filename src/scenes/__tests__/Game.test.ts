@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { Game, Cell } from "../Game";
+import { Game } from "../Game";
+import { Cell } from "../../types";
 import * as constants from "../../constants";
 import { MockRectangle, MockPointerEvent } from "./mocks/phaser";
 
@@ -114,6 +115,184 @@ describe("Game Scene", () => {
 
       inputCallback({ x: 0, y: 0 }, cornerCell);
       expect(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].isAlive).toBe(true);
+    });
+  });
+
+  describe("Game of Life Rules", () => {
+    let grid: Cell[][];
+
+    beforeEach(() => {
+      grid = (game as unknown as { grid: Cell[][] }).grid;
+    });
+
+    describe("Underpopulation Rule", () => {
+      it("happy: live cell with no neighbors should die", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(false);
+      });
+
+      it("happy: live cell with one neighbor should die", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(false);
+        expect(grid[1][2].isAlive).toBe(false);
+      });
+    });
+
+    describe("Survival Rule", () => {
+      it("happy: live cell with two neighbors should survive", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(true);
+      });
+
+      it("happy: live cell with three neighbors should survive", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 2);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(true);
+      });
+    });
+
+    describe("Overcrowding Rule", () => {
+      it("happy: live cell with more than three neighbors should die", () => {
+        // set up initial state with 4 neighbors
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1); // center
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // top
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // left
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // right
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1); // bottom
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(false);
+      });
+    });
+
+    describe("Reproduction Rule", () => {
+      it("happy: dead cell with exactly three neighbors should become alive", () => {
+        // set up initial state
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(true);
+      });
+
+      it("happy: dead cell with two or four neighbors should stay dead", () => {
+        // set up initial state with 2 neighbors
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(false);
+
+        // add two more neighbors (4 total)
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[1][1].isAlive).toBe(false);
+      });
+    });
+
+    describe("Edge Cases", () => {
+      it("happy: should handle cells on grid borders correctly", () => {
+        // corner cell with two neighbors
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 0); // corner
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        expect(grid[0][0].isAlive).toBe(true);
+      });
+
+      it("happy: should handle stable patterns (still lifes)", () => {
+        // create a block pattern
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 2);
+
+        // simulate multiple generations
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        // block should remain stable
+        expect(grid[1][1].isAlive).toBe(true); // center
+        expect(grid[1][2].isAlive).toBe(true); // right
+        expect(grid[2][1].isAlive).toBe(true); // bottom
+        expect(grid[2][2].isAlive).toBe(true); // bottom-right
+      });
+
+      it("sad: should handle empty grid", () => {
+        // no cells are alive
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        // grid should remain empty
+        for (let row = 0; row < constants.GRID_ROWS; row++) {
+          for (let col = 0; col < constants.GRID_COLS; col++) {
+            expect(grid[row][col].isAlive).toBe(false);
+          }
+        }
+      });
+
+      it("sad: should handle all cells alive", () => {
+        // set all cells alive
+        for (let row = 0; row < constants.GRID_ROWS; row++) {
+          for (let col = 0; col < constants.GRID_COLS; col++) {
+            (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(row, col);
+          }
+        }
+
+        // next generation - most cells should die due to overcrowding
+        // corner cells have 3 neighbors (survive)
+        // edge cells have 5 neighbors (die)
+        // inner cells have 8 neighbors (die)
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        // verify corners survive (they have exactly 3 neighbors)
+        expect(grid[0][0].isAlive).toBe(true);
+        expect(grid[0][constants.GRID_COLS - 1].isAlive).toBe(true);
+        expect(grid[constants.GRID_ROWS - 1][0].isAlive).toBe(true);
+        expect(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].isAlive).toBe(true);
+
+        // verify some non-corner cells die (they have more than 3 neighbors)
+        expect(grid[0][1].isAlive).toBe(false); // edge cell (5 neighbors)
+        expect(grid[1][1].isAlive).toBe(false); // inner cell (8 neighbors)
+      });
     });
   });
 });
