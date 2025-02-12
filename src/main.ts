@@ -1,18 +1,21 @@
 import { Boot } from "./scenes/Boot";
 import { Game as MainGame } from "./scenes/Game";
 import { Preloader } from "./scenes/Preloader";
+import { GAME_WIDTH, GAME_HEIGHT, BACKGROUND_COLOR } from "./constants";
 
 import { Game, Types } from "phaser";
 
 const config: Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  width: 1024,
-  height: 768,
+  width: GAME_WIDTH,
+  height: GAME_HEIGHT,
   parent: "game-container",
-  backgroundColor: "#028af8",
+  backgroundColor: BACKGROUND_COLOR,
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.NONE,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    width: GAME_WIDTH,
+    height: GAME_HEIGHT,
   },
   scene: [Boot, Preloader, MainGame],
 };
