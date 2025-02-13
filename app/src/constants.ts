@@ -85,3 +85,8 @@ export const NEIGHBOR_OFFSETS: Map<Direction, Offset> = new Map([
   [Direction.BOTTOM, [1, 0]],
   [Direction.BOTTOM_RIGHT, [1, 1]],
 ]);
+
+export enum UI_VIEW {
+  CREATE_ROOM_VIEW = "create-room-view",
+  JOIN_ROOM_VIEW = "join-room-view",
+}
