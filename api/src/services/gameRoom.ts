@@ -69,7 +69,7 @@ class GameRoomService {
         {
           id: validatedData.hostId,
           name: validatedData.hostName,
-          color: getRandomUnusedColor([]), // host gets first pick of colors
+          color: config.playerColor,
           isHost: true,
         },
       ],
