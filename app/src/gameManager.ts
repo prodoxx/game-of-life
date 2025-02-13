@@ -2,10 +2,12 @@ import { Game } from "phaser";
 import { UI_VIEW } from "./constants";
 import { userIdentificationService } from "./services/userIdentification";
 import type { GameRoomMetadata, Player } from "@game/shared";
-import axios from "axios";
 import { z } from "zod";
 import { createIcons, LoaderCircle } from "lucide";
 import { getRandomUnusedColor } from "@game/shared";
+import { apiService } from "./services/api";
+import { viewLoader } from "./services/viewLoader";
+import type { AxiosError } from "axios";
 
 const ErrorMessageSchema = z.object({
   message: z.string(),
@@ -52,8 +54,13 @@ class GameManager {
 
   private async handleExistingRoom(roomId: string): Promise<void> {
     try {
-      const response = await axios.get<{ data: GameRoomMetadata }>(`/api/v1/rooms/${roomId}`);
-      this.gameRoomMetadata = response.data.data;
+      this.gameRoomMetadata = await apiService.getRoomById(roomId);
+
+      if (!this.gameRoomMetadata) {
+        window.history.replaceState({}, "", "/");
+        await this.setup();
+        return;
+      }
 
       const currentPlayer = this.findCurrentPlayer();
 
@@ -142,18 +149,17 @@ class GameManager {
         this.showLoading(this.submitButton!, this.loadingSpinner!);
 
         const usedColors = this.gameRoomMetadata?.players.map((p: Player) => p.color) ?? [];
-        const response = await axios.post<{ data: GameRoomMetadata }>(`/api/v1/rooms/${roomId}/join`, {
+        this.gameRoomMetadata = await apiService.joinRoom(
+          roomId,
           playerName,
-          playerId: userIdentificationService.getId(),
-          color: getRandomUnusedColor(usedColors),
-        });
-
-        this.gameRoomMetadata = response.data.data;
+          userIdentificationService.getId(),
+          getRandomUnusedColor(usedColors)
+        );
         await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
         this.setupRoomView();
       } catch (error) {
         console.error("Error joining game:", error);
-        if (axios.isAxiosError(error) && error.response?.data) {
+        if (this.isAxiosError(error) && error.response?.data) {
           try {
             const errorData = ErrorMessageSchema.parse(error.response.data);
             this.showError(errorData.message);
@@ -226,9 +232,9 @@ class GameManager {
 
   private async loadView(viewName: string): Promise<void> {
     try {
-      const response = await axios.get(`/src/views/${viewName}.html`);
+      const html = await viewLoader.loadView(viewName);
       if (this.modalContent) {
-        this.modalContent.innerHTML = response.data;
+        this.modalContent.innerHTML = html;
 
         if (viewName === UI_VIEW.JOIN_ROOM_VIEW) {
           this.setupRoomView();
@@ -292,23 +298,16 @@ class GameManager {
       if (!this.submitButton || !this.loadingSpinner) return;
       this.showLoading(this.submitButton, this.loadingSpinner);
 
-      const response = await axios.post<{ data: GameRoomMetadata }>("/api/v1/rooms", {
-        hostName: this.hostName,
-        hostId: userIdentificationService.getId(),
-      });
-
-      this.gameRoomMetadata = response.data.data;
+      this.gameRoomMetadata = await apiService.createRoom(this.hostName, userIdentificationService.getId());
       await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
     } catch (error) {
       console.error("Error creating game room:", error);
 
-      if (axios.isAxiosError(error) && error.response?.data) {
+      if (this.isAxiosError(error) && error.response?.data) {
         try {
-          // try to parse error message from response
           const errorData = ErrorMessageSchema.parse(error.response.data);
           this.showError(errorData.message);
         } catch {
-          // if can't parse, show generic error
           this.showError("Failed to create game room");
         }
       } else {
@@ -319,6 +318,10 @@ class GameManager {
         this.hideLoading(this.submitButton, this.loadingSpinner);
       }
     }
+  }
+
+  private isAxiosError(error: unknown): error is AxiosError {
+    return (error as AxiosError)?.isAxiosError === true;
   }
 
   private async handleStartGame(): Promise<void> {
