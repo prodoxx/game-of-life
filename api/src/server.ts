@@ -7,7 +7,7 @@ if (process.env.NODE_ENV !== "production") {
 import express from "express";
 import { createServer } from "http";
 import { configureMiddleware } from "./config/middleware";
-import { healthRoutes } from "./routes";
+import { healthRoutes, roomsRoutes } from "./routes";
 
 const app = express();
 const server = createServer(app);
@@ -17,6 +17,7 @@ configureMiddleware(app);
 
 // api routes
 app.use("/v1", healthRoutes);
+app.use("/v1", roomsRoutes);
 
 const PORT = process.env.PORT || 3000;
 
