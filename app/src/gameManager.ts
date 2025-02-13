@@ -3,7 +3,7 @@ import { UI_VIEW } from "./constants";
 import { userIdentificationService } from "./services/userIdentification";
 import type { GameRoomMetadata, Player } from "@game/shared";
 import { z } from "zod";
-import { createIcons, LoaderCircle } from "lucide";
+import { Check, Copy, createIcons, LoaderCircle } from "lucide";
 import { getRandomUnusedColor } from "@game/shared";
 import { apiService } from "./services/api";
 import { viewLoader } from "./services/viewLoader";
@@ -39,6 +39,7 @@ class GameManager {
   }
 
   private async handleInitialization(): Promise<void> {
+    this.setupModal();
     const roomId = this.getRoomIdFromUrl();
     if (roomId) {
       await this.handleExistingRoom(roomId);
@@ -92,7 +93,7 @@ class GameManager {
       console.log("game in progress");
     } else {
       await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
-      this.setupRoomView();
+      this.setupJoinRoomView();
     }
   }
 
@@ -156,7 +157,7 @@ class GameManager {
           getRandomUnusedColor(usedColors)
         );
         await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
-        this.setupRoomView();
+        this.setupJoinRoomView();
       } catch (error) {
         console.error("Error joining game:", error);
         if (this.isAxiosError(error) && error.response?.data) {
@@ -195,12 +196,8 @@ class GameManager {
   }
 
   private initializeLoadingSpinner(spinner: HTMLElement): void {
-    spinner.innerHTML = `<i data-lucide="loader-circle" class="animate-spin" style="width: 20px; height: 20px;"></i>`;
-    createIcons({
-      icons: {
-        "loader-circle": LoaderCircle,
-      },
-    });
+    if (!spinner) return;
+    spinner.classList.remove("hidden");
   }
 
   private showError(message: string): void {
@@ -217,10 +214,12 @@ class GameManager {
     this.errorMessage?.classList.add("hidden");
   }
 
-  private async setup(): Promise<void> {
+  private setupModal(): void {
     this.modal = document.getElementById("modal");
     this.modalContent = document.getElementById("modal-content");
+  }
 
+  private async setup(): Promise<void> {
     if (!this.modal || !this.modalContent) {
       console.error("Required modal elements not found");
       return;
@@ -235,9 +234,16 @@ class GameManager {
       const html = await viewLoader.loadView(viewName);
       if (this.modalContent) {
         this.modalContent.innerHTML = html;
+        createIcons({
+          icons: {
+            LoaderCircle,
+            Copy,
+            Check,
+          },
+        });
 
         if (viewName === UI_VIEW.JOIN_ROOM_VIEW) {
-          this.setupRoomView();
+          this.setupJoinRoomView();
         }
       }
     } catch (error) {
@@ -246,25 +252,79 @@ class GameManager {
     }
   }
 
-  private setupRoomView(): void {
+  private setupJoinRoomView(): void {
+    if (!this.gameRoomMetadata) {
+      console.error("Game room metadata is required");
+      return;
+    }
+
     const hostNameElement = document.getElementById("host-name");
-    const playerNameElement = document.getElementById("player-name");
     const roomLinkElement = document.getElementById("room-link");
+    const playersGridElement = document.getElementById("players-grid");
+    const copyLinkBtn = document.getElementById("copy-link-btn");
+    const copyIcon = document.getElementById("copy-icon");
+    const checkIcon = document.getElementById("check-icon");
     this.startGameBtn = document.getElementById("start-game-btn") as HTMLButtonElement;
     this.startGameSpinner = document.getElementById("start-game-spinner");
 
-    if (hostNameElement) hostNameElement.textContent = this.hostName;
-    if (playerNameElement) playerNameElement.textContent = this.hostName;
-    if (roomLinkElement && this.gameRoomMetadata) {
+    // find host player
+    const hostPlayer = this.gameRoomMetadata.players.find((p) => p.isHost);
+    if (!hostPlayer) {
+      console.error("Host player not found");
+      return;
+    }
+
+    // update host name in title
+    if (hostNameElement) {
+      hostNameElement.textContent = hostPlayer.name;
+    }
+
+    // update room link and setup copy functionality
+    if (roomLinkElement && copyLinkBtn && copyIcon && checkIcon) {
       const roomUrl = new URL(window.location.origin);
       roomUrl.pathname = `/r/${this.gameRoomMetadata.id}`;
       window.history.replaceState({}, "", roomUrl.toString());
       roomLinkElement.textContent = roomUrl.toString();
+
+      copyLinkBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(roomUrl.toString());
+          copyIcon.classList.add("hidden");
+          checkIcon.classList.remove("hidden");
+          setTimeout(() => {
+            copyIcon.classList.remove("hidden");
+            checkIcon.classList.add("hidden");
+          }, 2000);
+        } catch (err) {
+          console.error("Failed to copy room link:", err);
+        }
+      });
     }
 
+    // update players grid
+    if (playersGridElement) {
+      playersGridElement.innerHTML = ""; // clear existing players
+      this.gameRoomMetadata.players.forEach((player) => {
+        const playerElement = document.createElement("div");
+        playerElement.className = "flex flex-col items-center space-y-2";
+        playerElement.innerHTML = `
+          <div class="w-16 h-16 rounded-lg" style="background-color: ${player.color}"></div>
+          <p class="text-sm text-center truncate max-w-[120px]">${player.name}${player.isHost ? " (Host)" : ""}</p>
+        `;
+        playersGridElement.appendChild(playerElement);
+      });
+    }
+
+    // setup start game button (only visible to host)
     if (this.startGameBtn && this.startGameSpinner) {
-      this.initializeLoadingSpinner(this.startGameSpinner);
-      this.startGameBtn.addEventListener("click", this.handleStartGame.bind(this));
+      const currentPlayer = this.findCurrentPlayer();
+      const isHost = currentPlayer?.isHost ?? false;
+
+      this.startGameBtn.style.display = isHost ? "inline-flex" : "none";
+      if (isHost) {
+        this.initializeLoadingSpinner(this.startGameSpinner);
+        this.startGameBtn.addEventListener("click", this.handleStartGame.bind(this));
+      }
     }
   }
 
