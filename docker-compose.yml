@@ -2,6 +2,7 @@ services:
   api:
     build:
       context: ./api
+      dockerfile: Dockerfile
       target: development
     ports:
       - "3000:3000"
@@ -17,8 +18,10 @@ services:
   app:
     build:
       context: ./app
+      dockerfile: Dockerfile
+      target: development
     ports:
-      - "80:80"
+      - "5173:5173"
     volumes:
       - ./app:/app
       - /app/node_modules
@@ -28,7 +31,7 @@ services:
       - api
 
   redis:
-    image: redis:7-alpine
+    image: redis:8.0-M03-alpine
     ports:
       - "6379:6379"
     volumes:
