@@ -1,17 +1,29 @@
-# build stage
-FROM node:20-slim as build
+FROM node:20-slim as base
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@8.15.8
 
 WORKDIR /app
 
-COPY package.json pnpm-lock.yaml ./
+# Development stage
+FROM base as development
+ENV NODE_ENV=development
 
+COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
 # copy source files
-COPY . .
+COPY . . 
 
+CMD ["pnpm", "dev"]
+
+# build stage
+FROM base as build
+ENV NODE_ENV=production
+
+COPY package*.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
+
+COPY . .
 RUN pnpm build
 
 # production stage
