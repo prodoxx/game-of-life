@@ -1,31 +1,27 @@
 {
   "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "bundler",
-    "lib": ["ES2022"],
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020"],
     "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "node",
     "resolveJsonModule": true,
-    "removeComments": true,
     "sourceMap": true,
-    "baseUrl": "src",
-    "paths": {
-      "@/*": ["*"]
-    },
-    "typeRoots": ["./node_modules/@types", "./src/types"],
+    "outDir": "./dist",
+    "rootDir": "..",
+    "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true,
-    "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "noUncheckedIndexedAccess": true,
-    "isolatedModules": true,
-    "moduleDetection": "force"
+    "esModuleInterop": true,
+    "composite": true,
+    "declaration": true,
+    "baseUrl": "..",
+    "paths": {
+      "@/*": ["api/src/*"],
+      "@shared/*": ["shared/*"]
+    }
   },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*", "../shared/**/*"],
+  "references": [{ "path": "../shared" }]
 }
