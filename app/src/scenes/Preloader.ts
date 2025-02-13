@@ -9,7 +9,5 @@ export class Preloader extends Scene {
 
   preload() {}
 
-  create() {
-    this.scene.start("Game");
-  }
+  create() {}
 }

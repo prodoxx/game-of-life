@@ -2,6 +2,7 @@ import { Boot } from "./scenes/Boot";
 import { Game as MainGame } from "./scenes/Game";
 import { Preloader } from "./scenes/Preloader";
 import { GAME_WIDTH, GAME_HEIGHT, BACKGROUND_COLOR } from "./constants";
+import GameManager from "./gameManager";
 
 import { Game, Types } from "phaser";
 
@@ -22,9 +23,11 @@ const config: Types.Core.GameConfig = {
 
 const game = new Game(config);
 
+const gameManager = new GameManager(game);
+
 // handle window resizing
 window.addEventListener("resize", () => {
   game.scale.resize(window.innerWidth, window.innerHeight);
 });
 
-export default game;
+export { game, gameManager };
