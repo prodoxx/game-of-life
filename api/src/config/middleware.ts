@@ -1,8 +1,17 @@
 import express from "express";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
+import cors from "cors";
 
 export const configureMiddleware = (app: express.Application) => {
+  // cors configuration
+  app.use(
+    cors({
+      origin: process.env.APP_BASE_URL,
+      credentials: true,
+    })
+  );
+
   // helmet handles a lot of security related  issues
   app.use(helmet());
 
