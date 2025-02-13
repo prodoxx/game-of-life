@@ -1,7 +1,7 @@
 FROM node:20-slim as base
 
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@8.15.8
 
 WORKDIR /app
 
@@ -9,32 +9,36 @@ WORKDIR /app
 FROM base as development
 ENV NODE_ENV=development
 
-COPY package*.json ./
-RUN pnpm install
+COPY package*.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
 CMD ["pnpm", "dev"]
 
-# Builder stage
+# build stage
 FROM base as builder
 ENV NODE_ENV=production
 
-COPY package*.json ./
-RUN pnpm install
+COPY package*.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 RUN pnpm build
 
-# Production stage
-FROM base as production
-ENV NODE_ENV=production
+# production stage
+FROM node:20-slim as production
 
-COPY package*.json ./
+RUN npm install -g pnpm@8.15.8
+
+WORKDIR /app
+
+COPY package*.json pnpm-lock.yaml ./
 RUN pnpm install --prod
 
 COPY --from=builder /app/dist ./dist
 
+ENV NODE_ENV=production
 EXPOSE 3000
 
 CMD ["pnpm", "start"]
