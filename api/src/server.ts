@@ -1,3 +1,9 @@
+// load env variables in production environments
+if (process.env.NODE_ENV !== "production") {
+  const { config } = await import("dotenv");
+  config();
+}
+
 import express from "express";
 import { createServer } from "http";
 import { configureMiddleware } from "./config/middleware";
