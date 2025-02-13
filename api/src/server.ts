@@ -1,6 +1,6 @@
 import express from "express";
 import { createServer } from "http";
-import { configureMiddleware } from "../config/middleware";
+import { configureMiddleware } from "./config/middleware";
 import { healthRoutes } from "./routes";
 
 const app = express();
