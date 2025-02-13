@@ -1,14 +1,16 @@
 services:
   api:
     build:
-      context: ./api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: api/Dockerfile
       target: development
     ports:
       - "3000:3000"
     volumes:
-      - ./api:/app
+      - ./api:/app/api
+      - ./shared:/app/shared
       - /app/node_modules
+      - /app/shared/node_modules
     environment:
       - NODE_ENV=development
       - REDIS_URL=redis://redis:6379
@@ -17,14 +19,16 @@ services:
 
   app:
     build:
-      context: ./app
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: app/Dockerfile
       target: development
     ports:
       - "5173:5173"
     volumes:
-      - ./app:/app
+      - ./app:/app/app
+      - ./shared:/app/shared
       - /app/node_modules
+      - /app/shared/node_modules
     environment:
       - NODE_ENV=development
     depends_on:

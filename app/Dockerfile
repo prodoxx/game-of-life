@@ -8,22 +8,38 @@ WORKDIR /app
 FROM base as development
 ENV NODE_ENV=development
 
-COPY package.json pnpm-lock.yaml ./
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY app/package.json ./app/
+
+# Install all dependencies
 RUN pnpm install --frozen-lockfile
 
-# copy source files
-COPY . . 
+# Copy source files
+COPY shared ./shared/
+COPY app ./app/
 
+WORKDIR /app/app
 CMD ["pnpm", "dev"]
 
 # build stage
 FROM base as build
 ENV NODE_ENV=production
 
-COPY package*.json pnpm-lock.yaml ./
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY app/package.json ./app/
+
+# Install all dependencies
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+# Copy source files
+COPY shared ./shared/
+COPY app ./app/
+
+WORKDIR /app/app
 RUN pnpm build
 
 # production stage
@@ -34,7 +50,7 @@ RUN apk add --no-cache curl
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 
 # copy built files
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=build /app/app/dist /usr/share/nginx/html
 
 EXPOSE 80
 

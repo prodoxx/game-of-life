@@ -9,21 +9,38 @@ WORKDIR /app
 FROM base as development
 ENV NODE_ENV=development
 
-COPY package*.json pnpm-lock.yaml ./
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY api/package.json ./api/
+
+# Install all dependencies
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+# Copy source files
+COPY shared ./shared/
+COPY api ./api/
 
+WORKDIR /app/api
 CMD ["pnpm", "dev"]
 
 # build stage
 FROM base as builder
 ENV NODE_ENV=production
 
-COPY package*.json pnpm-lock.yaml ./
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY api/package.json ./api/
+
+# Install all dependencies
 RUN pnpm install --frozen-lockfile
 
-COPY . .
+# Copy source files
+COPY shared ./shared/
+COPY api ./api/
+
+WORKDIR /app/api
 RUN pnpm build
 
 # production stage
@@ -33,11 +50,18 @@ RUN npm install -g pnpm@8.15.8
 
 WORKDIR /app
 
-COPY package*.json pnpm-lock.yaml ./
-RUN pnpm install --prod
+# Copy workspace files
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY shared/package.json ./shared/
+COPY api/package.json ./api/
 
-COPY --from=builder /app/dist ./dist
+# Install production dependencies
+RUN pnpm install --frozen-lockfile --prod
 
+COPY --from=builder /app/api/dist ./api/dist
+COPY --from=builder /app/shared/dist ./shared/dist
+
+WORKDIR /app/api
 ENV NODE_ENV=production
 EXPOSE 3000
 
