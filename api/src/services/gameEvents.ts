@@ -113,19 +113,8 @@ export class GameEventsService {
         // get current game state if game has started
         const gameState = gameRoom.hasStarted ? await gameRoomService.getGameState(roomId) : null;
 
-        // emit current room members and game state to the new joiner
-        socket.emit("game:room-state", {
-          members: gameRoom.players.map((p: PlayerWithStatus) => ({
-            userId: p.id,
-            name: p.name,
-            color: p.color,
-            isHost: p.isHost,
-            status: p.status,
-            lastStatusChange: p.lastStatusChange,
-          })),
-          gameState,
-          hasStarted: gameRoom.hasStarted,
-        });
+        // emit current room state to the new joiner
+        socket.emit("game:room-state", gameRoom);
 
         // notify others about the new/reconnected member
         this.io.to(roomId).emit("game:player-joined", {
