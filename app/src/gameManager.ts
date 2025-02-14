@@ -105,8 +105,7 @@ class GameManager {
       await socketService.joinRoom(this.gameRoomMetadata.id, currentPlayer.id, currentPlayer.name);
 
       if (this.gameRoomMetadata.hasStarted) {
-        // TODO: handle game in progress
-        console.log("game in progress");
+        this.startGame(this.gameRoomMetadata);
       } else {
         await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
         this.setupJoinRoomView();
@@ -283,11 +282,15 @@ class GameManager {
 
     // handle game started
     socketService.onGameStarted((gameRoomMetadata) => {
-      if (!this.gameRoomMetadata) return;
-      this.gameRoomMetadata = gameRoomMetadata;
-      this.hideModal();
-      this.game.scene.start("Game", { gameRoomMetadata });
+      this.startGame(gameRoomMetadata);
     });
+  }
+
+  private async startGame(gameRoomMetadata: GameRoomMetadata): Promise<void> {
+    if (!this.gameRoomMetadata) return;
+    this.gameRoomMetadata = gameRoomMetadata;
+    this.hideModal();
+    this.game.scene.start("Game", { gameRoomMetadata });
   }
 
   private async showCreateRoomWithError(): Promise<void> {
