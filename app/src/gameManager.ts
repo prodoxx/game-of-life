@@ -1,12 +1,13 @@
 import { Game } from "phaser";
 import { UI_VIEW } from "./constants";
 import { userIdentificationService } from "./services/userIdentification";
-import type { GameRoomMetadata, Player } from "@game/shared";
+import type { GameRoomMetadata, Player, PlayerWithStatus } from "@game/shared";
+import { PlayerStatus } from "@game/shared";
 import { z } from "zod";
 import { Check, Copy, createIcons, LoaderCircle } from "lucide";
-import { getRandomUnusedColor } from "@game/shared";
 import { apiService } from "./services/api";
 import { viewLoader } from "./services/viewLoader";
+import { socketService } from "./services/socketService";
 import type { AxiosError } from "axios";
 
 const ErrorMessageSchema = z.object({
@@ -66,7 +67,7 @@ class GameManager {
       const currentPlayer = this.findCurrentPlayer();
 
       if (currentPlayer) {
-        await this.handleReconnection();
+        await this.handleReconnection(currentPlayer);
         return;
       }
 
@@ -86,14 +87,32 @@ class GameManager {
     return this.gameRoomMetadata?.players.find((p: Player) => p.id === userIdentificationService.getId());
   }
 
-  private async handleReconnection(): Promise<void> {
-    console.log("reconnected");
-    if (this.gameRoomMetadata?.hasStarted) {
-      // TODO: handle game in progress
-      console.log("game in progress");
-    } else {
-      await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
-      this.setupJoinRoomView();
+  private async handleReconnection(currentPlayer: Player): Promise<void> {
+    if (!this.gameRoomMetadata) {
+      console.error("Game room metadata is required for reconnection");
+      return;
+    }
+
+    try {
+      // establish socket connection
+      socketService.connect();
+
+      // setup socket event handlers before joining room
+      this.setupSocketEventHandlers();
+
+      await socketService.joinRoom(this.gameRoomMetadata.id, currentPlayer.id, currentPlayer.name);
+
+      if (this.gameRoomMetadata.hasStarted) {
+        // TODO: handle game in progress
+        console.log("game in progress");
+      } else {
+        await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
+        this.setupJoinRoomView();
+      }
+    } catch (error) {
+      console.error("Error reconnecting to room:", error);
+      // fallback to create room view if reconnection fails
+      await this.setup();
     }
   }
 
@@ -146,34 +165,109 @@ class GameManager {
         return;
       }
 
-      try {
-        this.showLoading(this.submitButton!, this.loadingSpinner!);
+      await this.handleJoinFormSubmit(roomId, playerName);
+    });
+  }
 
-        const usedColors = this.gameRoomMetadata?.players.map((p: Player) => p.color) ?? [];
-        this.gameRoomMetadata = await apiService.joinRoom(
-          roomId,
-          playerName,
-          userIdentificationService.getId(),
-          getRandomUnusedColor(usedColors)
-        );
-        await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
-        this.setupJoinRoomView();
-      } catch (error) {
-        console.error("Error joining game:", error);
-        if (this.isAxiosError(error) && error.response?.data) {
-          try {
-            const errorData = ErrorMessageSchema.parse(error.response.data);
-            this.showError(errorData.message);
-          } catch {
-            this.showError("Failed to join game");
-          }
-        } else {
+  private async handleJoinFormSubmit(roomId: string, playerName: string): Promise<void> {
+    try {
+      this.showLoading(this.submitButton!, this.loadingSpinner!);
+
+      // first join via HTTP to reserve spot
+      this.gameRoomMetadata = await apiService.joinRoom(roomId, playerName, userIdentificationService.getId());
+
+      // then establish socket connection
+      socketService.connect();
+      await socketService.joinRoom(roomId, userIdentificationService.getId(), playerName);
+
+      // setup socket event handlers before loading view
+      this.setupSocketEventHandlers();
+
+      await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
+      this.setupJoinRoomView();
+    } catch (error) {
+      console.error("Error joining game:", error);
+      if (this.isAxiosError(error) && error.response?.data) {
+        try {
+          const errorData = ErrorMessageSchema.parse(error.response.data);
+          this.showError(errorData.message);
+        } catch {
           this.showError("Failed to join game");
         }
-      } finally {
-        if (this.submitButton && this.loadingSpinner) {
-          this.hideLoading(this.submitButton, this.loadingSpinner);
+      } else {
+        this.showError("Failed to join game");
+      }
+    } finally {
+      if (this.submitButton && this.loadingSpinner) {
+        this.hideLoading(this.submitButton, this.loadingSpinner);
+      }
+    }
+  }
+
+  private setupSocketEventHandlers(): void {
+    // handle room state update
+    socketService.onRoomState((data) => {
+      if (!this.gameRoomMetadata) return;
+
+      this.gameRoomMetadata.players = data.members.map(
+        (member) =>
+          ({
+            id: member.userId,
+            name: member.name,
+            color: member.color,
+            isHost: member.isHost,
+            status: member.status,
+            lastStatusChange: member.lastStatusChange,
+          } as PlayerWithStatus)
+      );
+
+      const playersGridElement = document.getElementById("players-grid");
+      if (playersGridElement) {
+        this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
+      }
+    });
+
+    // handle player joined
+    socketService.onPlayerJoined((data) => {
+      if (!this.gameRoomMetadata) return;
+
+      const playersGridElement = document.getElementById("players-grid");
+      if (playersGridElement) {
+        const updatedPlayers = [...this.gameRoomMetadata.players];
+        const playerIndex = updatedPlayers.findIndex((p) => p.id === data.userId);
+
+        const newPlayerData: PlayerWithStatus = {
+          id: data.userId,
+          name: data.name,
+          color: data.color,
+          isHost: data.isHost,
+          status: data.status === "active" ? PlayerStatus.Active : PlayerStatus.Inactive,
+          lastStatusChange: data.lastStatusChange,
+        };
+
+        if (playerIndex === -1) {
+          updatedPlayers.push(newPlayerData);
+        } else {
+          updatedPlayers[playerIndex] = {
+            ...updatedPlayers[playerIndex],
+            ...newPlayerData,
+          };
         }
+
+        this.gameRoomMetadata.players = updatedPlayers;
+        this.updatePlayersGrid(playersGridElement, updatedPlayers);
+      }
+    });
+
+    // handle player left
+    socketService.onPlayerLeft((data) => {
+      if (!this.gameRoomMetadata) return;
+
+      const playersGridElement = document.getElementById("players-grid");
+      if (playersGridElement) {
+        const updatedPlayers = this.gameRoomMetadata.players.filter((p) => p.id !== data.userId);
+        this.gameRoomMetadata.players = updatedPlayers;
+        this.updatePlayersGrid(playersGridElement, updatedPlayers);
       }
     });
   }
@@ -301,18 +395,9 @@ class GameManager {
       });
     }
 
-    // update players grid
+    // setup players grid with initial players
     if (playersGridElement) {
-      playersGridElement.innerHTML = ""; // clear existing players
-      this.gameRoomMetadata.players.forEach((player) => {
-        const playerElement = document.createElement("div");
-        playerElement.className = "flex flex-col items-center space-y-2";
-        playerElement.innerHTML = `
-          <div class="w-16 h-16 rounded-lg" style="background-color: ${player.color}"></div>
-          <p class="text-sm text-center truncate max-w-[120px]">${player.name}${player.isHost ? " (Host)" : ""}</p>
-        `;
-        playersGridElement.appendChild(playerElement);
-      });
+      this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
     }
 
     // setup start game button (only visible to host)
@@ -326,6 +411,24 @@ class GameManager {
         this.startGameBtn.addEventListener("click", this.handleStartGame.bind(this));
       }
     }
+  }
+
+  private updatePlayersGrid(gridElement: HTMLElement, players: PlayerWithStatus[]): void {
+    gridElement.innerHTML = "";
+    players.forEach((player) => {
+      const playerElement = document.createElement("div");
+      playerElement.className = "flex flex-col items-center space-y-2";
+
+      const statusClass = player.status === PlayerStatus.Active ? "opacity-100" : "opacity-50";
+      playerElement.innerHTML = `
+        <div class="w-16 h-16 rounded-lg ${statusClass}" style="background-color: ${player.color}"></div>
+        <p class="text-sm text-center truncate max-w-[120px]">
+          ${player.name}${player.isHost ? " (Host)" : ""}
+          ${player.status === PlayerStatus.Inactive ? " (Inactive)" : ""}
+        </p>
+      `;
+      gridElement.appendChild(playerElement);
+    });
   }
 
   private setupStartView(): void {
@@ -358,7 +461,16 @@ class GameManager {
       if (!this.submitButton || !this.loadingSpinner) return;
       this.showLoading(this.submitButton, this.loadingSpinner);
 
+      // first create room via HTTP
       this.gameRoomMetadata = await apiService.createRoom(this.hostName, userIdentificationService.getId());
+
+      // then establish socket connection
+      socketService.connect();
+
+      // setup socket event handlers before joining room
+      this.setupSocketEventHandlers();
+
+      await socketService.joinRoom(this.gameRoomMetadata.id, userIdentificationService.getId(), this.hostName);
       await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
     } catch (error) {
       console.error("Error creating game room:", error);
