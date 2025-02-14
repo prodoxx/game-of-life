@@ -201,13 +201,8 @@ export class GameEventsService {
         if (gameRoom) {
           const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
           if (player && player.isHost && player.status === "active") {
-            await gameRoomService.startGame(roomId);
-            this.io.to(roomId).emit("game:started", {
-              userId: player.id,
-              name: player.name,
-              color: player.color,
-              status: player.status,
-            });
+            const gameRoomMetadata = await gameRoomService.startGame(roomId);
+            this.io.to(roomId).emit("game:started", gameRoomMetadata);
           } else if (player && !player.isHost) {
             socket.emit("game:error", { message: "Only host can start the game" });
           } else if (player && player.status === "inactive") {
