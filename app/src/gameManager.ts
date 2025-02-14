@@ -290,24 +290,6 @@ class GameManager {
     });
   }
 
-  private updatePlayersGrid(gridElement: HTMLElement, players: PlayerWithStatus[]): void {
-    gridElement.innerHTML = "";
-    players.forEach((player) => {
-      const playerElement = document.createElement("div");
-      playerElement.className = "flex flex-col items-center space-y-2";
-
-      const statusClass = player.status === PlayerStatus.Active ? "opacity-100" : "opacity-50";
-      playerElement.innerHTML = `
-        <div class="w-16 h-16 rounded-lg ${statusClass}" style="background-color: ${player.color}"></div>
-        <p class="text-sm text-center truncate max-w-[120px]">
-          ${player.name}${player.isHost ? " (Host)" : ""}
-          ${player.status === PlayerStatus.Inactive ? " (Inactive)" : ""}
-        </p>
-      `;
-      gridElement.appendChild(playerElement);
-    });
-  }
-
   private updateGamePlayerList(players: PlayerWithStatus[]): void {
     const playerListElement = document.getElementById("player-list");
     if (!playerListElement) {
@@ -355,7 +337,10 @@ class GameManager {
     if (!this.gameRoomMetadata) return;
     this.gameRoomMetadata = gameRoomMetadata;
     this.hideModal();
-    this.game.scene.start("Game", { roomMetadata: gameRoomMetadata });
+    this.game.scene.start("Game", {
+      roomMetadata: gameRoomMetadata,
+      currentPlayerId: userIdentificationService.getId(),
+    });
     this.updateGamePlayerList(gameRoomMetadata.players);
   }
 
@@ -445,24 +430,7 @@ class GameManager {
     const copyLinkBtn = document.getElementById("copy-link-btn");
     const copyIcon = document.getElementById("copy-icon");
     const checkIcon = document.getElementById("check-icon");
-
-    if (!(roomLinkElement instanceof HTMLAnchorElement)) {
-      console.error("Room link element is not an anchor");
-      return;
-    }
-
-    if (!(copyLinkBtn instanceof HTMLButtonElement)) {
-      console.error("Copy button is not a button element");
-      return;
-    }
-
-    const startGameBtn = document.getElementById("start-game-btn");
-    if (!(startGameBtn instanceof HTMLButtonElement)) {
-      console.error("Start game button is not a button element");
-      return;
-    }
-    this.startGameBtn = startGameBtn;
-
+    this.startGameBtn = document.getElementById("start-game-btn") as HTMLButtonElement;
     this.startGameSpinner = document.getElementById("start-game-spinner");
 
     // find host player
@@ -478,23 +446,61 @@ class GameManager {
     }
 
     // update room link and setup copy functionality
-    if (copyIcon && checkIcon) {
+    if (roomLinkElement && copyLinkBtn && copyIcon && checkIcon) {
       const roomUrl = new URL(window.location.origin);
       roomUrl.pathname = `/r/${this.gameRoomMetadata.id}`;
-      roomLinkElement.href = roomUrl.toString();
-      copyLinkBtn.addEventListener("click", () => {
-        copyIcon.classList.add("hidden");
-        checkIcon.classList.remove("hidden");
-        copyLinkBtn.textContent = "Copied!";
-        copyLinkBtn.disabled = true;
-        setTimeout(() => {
-          copyIcon.classList.remove("hidden");
-          checkIcon.classList.add("hidden");
-          copyLinkBtn.textContent = "Copy Link";
-          copyLinkBtn.disabled = false;
-        }, 2000);
+      window.history.replaceState({}, "", roomUrl.toString());
+      roomLinkElement.textContent = roomUrl.toString();
+
+      copyLinkBtn.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(roomUrl.toString());
+          copyIcon.classList.add("hidden");
+          checkIcon.classList.remove("hidden");
+          setTimeout(() => {
+            copyIcon.classList.remove("hidden");
+            checkIcon.classList.add("hidden");
+          }, 2000);
+        } catch (err) {
+          console.error("Failed to copy room link:", err);
+        }
       });
     }
+
+    // setup players grid with initial players
+    if (playersGridElement) {
+      this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
+    }
+
+    // setup start game button (only visible to host)
+    if (this.startGameBtn && this.startGameSpinner) {
+      const currentPlayer = this.findCurrentPlayer();
+      const isHost = currentPlayer?.isHost ?? false;
+
+      this.startGameBtn.style.display = isHost ? "inline-flex" : "none";
+      if (isHost) {
+        this.initializeLoadingSpinner(this.startGameSpinner);
+        this.startGameBtn.addEventListener("click", this.handleStartGame.bind(this));
+      }
+    }
+  }
+
+  private updatePlayersGrid(gridElement: HTMLElement, players: PlayerWithStatus[]): void {
+    gridElement.innerHTML = "";
+    players.forEach((player) => {
+      const playerElement = document.createElement("div");
+      playerElement.className = "flex flex-col items-center space-y-2";
+
+      const statusClass = player.status === PlayerStatus.Active ? "opacity-100" : "opacity-50";
+      playerElement.innerHTML = `
+        <div class="w-16 h-16 rounded-lg ${statusClass}" style="background-color: ${player.color}"></div>
+        <p class="text-sm text-center truncate max-w-[120px]">
+          ${player.name}${player.isHost ? " (Host)" : ""}
+          ${player.status === PlayerStatus.Inactive ? " (Inactive)" : ""}
+        </p>
+      `;
+      gridElement.appendChild(playerElement);
+    });
   }
 
   private setupStartView(): void {
