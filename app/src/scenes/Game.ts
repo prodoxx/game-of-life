@@ -11,6 +11,7 @@ import {
   GENERATION_TICK_MS,
 } from "../constants";
 import { Cell } from "../types";
+import { GameRoomMetadata } from "shared";
 
 export class Game extends Scene {
   private grid: Cell[][] = [];
@@ -18,9 +19,16 @@ export class Game extends Scene {
   private isRunning: boolean = false;
   private isPaused: boolean = false;
   private gridContainer!: Phaser.GameObjects.Container;
+  private roomMetadata?: GameRoomMetadata;
+  private currentPlayerId: string | null = null;
 
   constructor() {
     super("Game");
+  }
+
+  init(data: { roomMetadata: GameRoomMetadata; currentPlayerId: string }) {
+    this.roomMetadata = data.roomMetadata;
+    this.currentPlayerId = data.currentPlayerId;
   }
 
   create() {
@@ -180,10 +188,19 @@ export class Game extends Scene {
     }
   }
 
+  private getPlayerColor(playerId: string): number {
+    const player = this.roomMetadata?.players.find((p) => p.id === playerId);
+    if (!player) return DEAD_COLOR;
+
+    const playerColor = player.color;
+    // convert hex color to number
+    return parseInt(playerColor.slice(1), 16);
+  }
+
   private toggleCell(row: number, col: number): void {
     const cell = this.grid[row][col];
     cell.isAlive = !cell.isAlive;
-    cell.sprite.setFillStyle(cell.isAlive ? ALIVE_COLOR : DEAD_COLOR);
+    cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(this.currentPlayerId!) : DEAD_COLOR);
   }
 
   private countLiveNeighbors(row: number, col: number): number {
