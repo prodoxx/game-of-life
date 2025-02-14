@@ -11,8 +11,17 @@
     <div id="app" class="relative min-h-screen">
       <div id="game-container"></div>
 
+      <!-- Player List -->
+      <div
+        id="player-list"
+        class="fixed top-[12rem] left-8 -translate-y-1/2 bg-black/50 backdrop-blur-sm rounded-lg p-3 z-10"
+      >
+        <h2 class="text-white text-sm font-bold mb-2">Players</h2>
+        <div class="player-entries"></div>
+      </div>
+
       <!-- Modal -->
-      <div id="modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-10">
+      <div id="modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
         <div class="bg-white rounded-xl p-4 max-w-md w-full mx-4 shadow-2xl">
           <div id="modal-content"></div>
         </div>

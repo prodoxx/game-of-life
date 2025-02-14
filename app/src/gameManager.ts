@@ -217,6 +217,8 @@ class GameManager {
         if (playersGridElement) {
           this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
         }
+
+        this.updateGamePlayerList(this.gameRoomMetadata.players);
       } catch (error) {
         console.error("Error updating room state:", error);
       }
@@ -265,6 +267,7 @@ class GameManager {
 
         this.gameRoomMetadata.players = updatedPlayers;
         this.updatePlayersGrid(playersGridElement, updatedPlayers);
+        this.updateGamePlayerList(updatedPlayers);
       }
     });
 
@@ -277,6 +280,7 @@ class GameManager {
         const updatedPlayers = this.gameRoomMetadata.players.filter((p) => p.id !== data.userId);
         this.gameRoomMetadata.players = updatedPlayers;
         this.updatePlayersGrid(playersGridElement, updatedPlayers);
+        this.updateGamePlayerList(updatedPlayers);
       }
     });
 
@@ -286,11 +290,73 @@ class GameManager {
     });
   }
 
+  private updatePlayersGrid(gridElement: HTMLElement, players: PlayerWithStatus[]): void {
+    gridElement.innerHTML = "";
+    players.forEach((player) => {
+      const playerElement = document.createElement("div");
+      playerElement.className = "flex flex-col items-center space-y-2";
+
+      const statusClass = player.status === PlayerStatus.Active ? "opacity-100" : "opacity-50";
+      playerElement.innerHTML = `
+        <div class="w-16 h-16 rounded-lg ${statusClass}" style="background-color: ${player.color}"></div>
+        <p class="text-sm text-center truncate max-w-[120px]">
+          ${player.name}${player.isHost ? " (Host)" : ""}
+          ${player.status === PlayerStatus.Inactive ? " (Inactive)" : ""}
+        </p>
+      `;
+      gridElement.appendChild(playerElement);
+    });
+  }
+
+  private updateGamePlayerList(players: PlayerWithStatus[]): void {
+    const playerListElement = document.getElementById("player-list");
+    if (!playerListElement) {
+      console.warn("player-list element not found");
+      return;
+    }
+
+    // find the player entries container
+    const playerEntriesContainer = playerListElement.querySelector(".player-entries");
+    if (!playerEntriesContainer) {
+      console.warn("player-entries container not found");
+      return;
+    }
+
+    // clear existing entries
+    playerEntriesContainer.innerHTML = "";
+
+    // create and append player entries
+    players.forEach((player) => {
+      const playerElement = document.createElement("div");
+      playerElement.className = "player-entry";
+
+      const colorIndicator = document.createElement("div");
+      colorIndicator.className = "player-color";
+      colorIndicator.style.backgroundColor = player.color;
+
+      const nameElement = document.createElement("span");
+      nameElement.className = "player-name";
+      nameElement.textContent = player.name;
+
+      if (player.isHost) {
+        const hostBadge = document.createElement("span");
+        hostBadge.className = "host-badge";
+        hostBadge.textContent = "Host";
+        nameElement.appendChild(hostBadge);
+      }
+
+      playerElement.appendChild(colorIndicator);
+      playerElement.appendChild(nameElement);
+      playerEntriesContainer.appendChild(playerElement);
+    });
+  }
+
   private async startGame(gameRoomMetadata: GameRoomMetadata): Promise<void> {
     if (!this.gameRoomMetadata) return;
     this.gameRoomMetadata = gameRoomMetadata;
     this.hideModal();
-    this.game.scene.start("Game", { gameRoomMetadata });
+    this.game.scene.start("Game", { roomMetadata: gameRoomMetadata });
+    this.updateGamePlayerList(gameRoomMetadata.players);
   }
 
   private async showCreateRoomWithError(): Promise<void> {
@@ -379,7 +445,24 @@ class GameManager {
     const copyLinkBtn = document.getElementById("copy-link-btn");
     const copyIcon = document.getElementById("copy-icon");
     const checkIcon = document.getElementById("check-icon");
-    this.startGameBtn = document.getElementById("start-game-btn") as HTMLButtonElement;
+
+    if (!(roomLinkElement instanceof HTMLAnchorElement)) {
+      console.error("Room link element is not an anchor");
+      return;
+    }
+
+    if (!(copyLinkBtn instanceof HTMLButtonElement)) {
+      console.error("Copy button is not a button element");
+      return;
+    }
+
+    const startGameBtn = document.getElementById("start-game-btn");
+    if (!(startGameBtn instanceof HTMLButtonElement)) {
+      console.error("Start game button is not a button element");
+      return;
+    }
+    this.startGameBtn = startGameBtn;
+
     this.startGameSpinner = document.getElementById("start-game-spinner");
 
     // find host player
@@ -395,61 +478,23 @@ class GameManager {
     }
 
     // update room link and setup copy functionality
-    if (roomLinkElement && copyLinkBtn && copyIcon && checkIcon) {
+    if (copyIcon && checkIcon) {
       const roomUrl = new URL(window.location.origin);
       roomUrl.pathname = `/r/${this.gameRoomMetadata.id}`;
-      window.history.replaceState({}, "", roomUrl.toString());
-      roomLinkElement.textContent = roomUrl.toString();
-
-      copyLinkBtn.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(roomUrl.toString());
-          copyIcon.classList.add("hidden");
-          checkIcon.classList.remove("hidden");
-          setTimeout(() => {
-            copyIcon.classList.remove("hidden");
-            checkIcon.classList.add("hidden");
-          }, 2000);
-        } catch (err) {
-          console.error("Failed to copy room link:", err);
-        }
+      roomLinkElement.href = roomUrl.toString();
+      copyLinkBtn.addEventListener("click", () => {
+        copyIcon.classList.add("hidden");
+        checkIcon.classList.remove("hidden");
+        copyLinkBtn.textContent = "Copied!";
+        copyLinkBtn.disabled = true;
+        setTimeout(() => {
+          copyIcon.classList.remove("hidden");
+          checkIcon.classList.add("hidden");
+          copyLinkBtn.textContent = "Copy Link";
+          copyLinkBtn.disabled = false;
+        }, 2000);
       });
     }
-
-    // setup players grid with initial players
-    if (playersGridElement) {
-      this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
-    }
-
-    // setup start game button (only visible to host)
-    if (this.startGameBtn && this.startGameSpinner) {
-      const currentPlayer = this.findCurrentPlayer();
-      const isHost = currentPlayer?.isHost ?? false;
-
-      this.startGameBtn.style.display = isHost ? "inline-flex" : "none";
-      if (isHost) {
-        this.initializeLoadingSpinner(this.startGameSpinner);
-        this.startGameBtn.addEventListener("click", this.handleStartGame.bind(this));
-      }
-    }
-  }
-
-  private updatePlayersGrid(gridElement: HTMLElement, players: PlayerWithStatus[]): void {
-    gridElement.innerHTML = "";
-    players.forEach((player) => {
-      const playerElement = document.createElement("div");
-      playerElement.className = "flex flex-col items-center space-y-2";
-
-      const statusClass = player.status === PlayerStatus.Active ? "opacity-100" : "opacity-50";
-      playerElement.innerHTML = `
-        <div class="w-16 h-16 rounded-lg ${statusClass}" style="background-color: ${player.color}"></div>
-        <p class="text-sm text-center truncate max-w-[120px]">
-          ${player.name}${player.isHost ? " (Host)" : ""}
-          ${player.status === PlayerStatus.Inactive ? " (Inactive)" : ""}
-        </p>
-      `;
-      gridElement.appendChild(playerElement);
-    });
   }
 
   private setupStartView(): void {
@@ -542,5 +587,4 @@ class GameManager {
     this.modal?.classList.add("hidden");
   }
 }
-
 export default GameManager;
