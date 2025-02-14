@@ -68,6 +68,14 @@ const joinRoom = async (req: Request<RoomParams, {}, JoinRoomRequest>, res: Resp
     const room = await gameRoomService.joinGameRoom(roomId, playerName, playerId);
     res.status(200).json({ data: room });
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      res.status(400).json({
+        error: "Validation failed",
+        details: error.errors,
+      });
+      return;
+    }
+
     if (error instanceof Error) {
       if (error.message === "Game room not found") {
         res.status(404).json({ error: error.message });
@@ -78,6 +86,7 @@ const joinRoom = async (req: Request<RoomParams, {}, JoinRoomRequest>, res: Resp
         return;
       }
     }
+
     res.status(500).json({ error: "Failed to join game room" });
   }
 };
