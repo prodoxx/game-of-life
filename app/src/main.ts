@@ -1,3 +1,5 @@
+import "./style.css";
+import "toastify-js/src/toastify.css";
 import { Boot } from "./scenes/Boot";
 import { Game as MainGame } from "./scenes/Game";
 import { Preloader } from "./scenes/Preloader";
