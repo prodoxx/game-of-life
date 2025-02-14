@@ -1,3 +1,3 @@
-export * from "./utils/colors";
 export * from "./schemas/player";
 export * from "./schemas/gameRoom";
+export * from "./utils/colors";
