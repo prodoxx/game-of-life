@@ -1,5 +1,5 @@
 import { Server, Socket } from "socket.io";
-import { PlayerWithStatus, PlayerStatus } from "@game/shared";
+import { PlayerWithStatus, PlayerStatus, CellState } from "@game/shared";
 import { gameRoomService } from "./gameRoom";
 import { config } from "@/config/config";
 
@@ -11,7 +11,7 @@ interface JoinRoomData {
 
 interface UpdateGridData {
   roomId: string;
-  grid: boolean[][];
+  grid: CellState[][];
 }
 
 export class GameEventsService {

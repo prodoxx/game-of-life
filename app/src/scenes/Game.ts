@@ -4,14 +4,14 @@ import {
   GRID_ROWS,
   CELL_SIZE,
   GRID_BORDER_COLOR,
-  ALIVE_COLOR,
   DEAD_COLOR,
   NEIGHBOR_OFFSETS,
   GAME_RULES,
   GENERATION_TICK_MS,
 } from "../constants";
 import { Cell } from "../types";
-import { GameRoomMetadata } from "shared";
+import { GameRoomMetadata, CellState } from "@game/shared";
+import { socketService } from "../services/socketService";
 
 export class Game extends Scene {
   private grid: Cell[][] = [];
@@ -20,7 +20,7 @@ export class Game extends Scene {
   private isPaused: boolean = false;
   private gridContainer!: Phaser.GameObjects.Container;
   private roomMetadata?: GameRoomMetadata;
-  private currentPlayerId: string | null = null;
+  private currentPlayerId: string | undefined = undefined;
 
   constructor() {
     super("Game");
@@ -35,6 +35,35 @@ export class Game extends Scene {
     this.gridContainer = this.add.container(0, 0);
     this.createGrid();
     this.setupInteraction();
+    this.setupSocketHandlers();
+  }
+
+  private setupSocketHandlers(): void {
+    // handle grid state updates from other players
+    socketService.onGameStateUpdated((data) => {
+      this.updateGridFromState(data.grid);
+    });
+  }
+
+  private updateGridFromState(gridState: CellState[][]): void {
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        const cellState = gridState[row][col];
+        const cell = this.grid[row][col];
+        cell.isAlive = cellState.isAlive;
+        cell.ownerId = cellState.ownerId;
+        cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(cell.ownerId!) : DEAD_COLOR);
+      }
+    }
+  }
+
+  private getGridState(): CellState[][] {
+    return this.grid.map((row) =>
+      row.map((cell) => ({
+        isAlive: cell.isAlive,
+        ownerId: cell.ownerId,
+      }))
+    );
   }
 
   private setupGenerationKeyboardControls(): void {
@@ -200,7 +229,13 @@ export class Game extends Scene {
   private toggleCell(row: number, col: number): void {
     const cell = this.grid[row][col];
     cell.isAlive = !cell.isAlive;
+    cell.ownerId = cell.isAlive ? this.currentPlayerId : undefined;
     cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(this.currentPlayerId!) : DEAD_COLOR);
+
+    // emit grid update to other players
+    if (this.roomMetadata) {
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+    }
   }
 
   private countLiveNeighbors(row: number, col: number): number {
@@ -220,26 +255,89 @@ export class Game extends Scene {
     return count;
   }
 
-  private applyCellRules(isAlive: boolean, neighbors: number): boolean {
+  private applyCellRules(cell: Cell, neighbors: number): { willLive: boolean; newOwnerId?: string } {
     const matchingRule = GAME_RULES.find(
-      (rule) => rule.when.currentState === isAlive && rule.when.neighborCount === neighbors
+      (rule) => rule.when.currentState === cell.isAlive && rule.when.neighborCount === neighbors
     );
 
-    return matchingRule?.then ?? false;
+    const willLive = matchingRule?.then ?? false;
+
+    // if the cell will live, determine ownership
+    if (willLive) {
+      if (cell.isAlive) {
+        // surviving cell keeps its owner
+        return { willLive, newOwnerId: cell.ownerId };
+      } else {
+        // reproducing cell - find majority (average) owner among live neighbors
+        const neighborOwners = this.getAliveNeighborOwners(cell);
+        return { willLive, newOwnerId: this.getMajorityOwner(neighborOwners) };
+      }
+    }
+
+    return { willLive };
+  }
+
+  private getAliveNeighborOwners(cell: Cell): string[] {
+    const owners: string[] = [];
+    const row = this.grid.findIndex((r) => r.includes(cell));
+    const col = this.grid[row].findIndex((c) => c === cell);
+
+    for (const [_direction, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
+      const neighborRow = row + rowOffset;
+      const neighborCol = col + colOffset;
+
+      const isWithinBounds = neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
+
+      if (isWithinBounds) {
+        const neighbor = this.grid[neighborRow][neighborCol];
+        if (neighbor.isAlive && neighbor.ownerId) {
+          owners.push(neighbor.ownerId);
+        }
+      }
+    }
+
+    return owners;
+  }
+
+  private getMajorityOwner(owners: string[]): string {
+    if (owners.length === 0) {
+      if (!this.currentPlayerId) {
+        throw new Error("Current player ID is required");
+      }
+      return this.currentPlayerId;
+    }
+
+    const ownerCounts = owners.reduce((acc, owner) => {
+      acc[owner] = (acc[owner] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+
+    let maxOwner = owners[0];
+    let maxCount = ownerCounts[maxOwner];
+
+    for (const [owner, count] of Object.entries(ownerCounts)) {
+      if (count > maxCount) {
+        maxCount = count;
+        maxOwner = owner;
+      }
+    }
+
+    return maxOwner;
   }
 
   nextGeneration(): void {
     // create a copy of the current state
-    const nextState: boolean[][] = Array(GRID_ROWS)
+    const nextState: { isAlive: boolean; ownerId?: string }[][] = Array(GRID_ROWS)
       .fill(null)
-      .map(() => Array(GRID_COLS).fill(false));
+      .map(() => Array(GRID_COLS).fill({ isAlive: false }));
 
     // apply rules to each cell
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const neighbors = this.countLiveNeighbors(row, col);
         const cell = this.grid[row][col];
-        nextState[row][col] = this.applyCellRules(cell.isAlive, neighbors);
+        const { willLive, newOwnerId } = this.applyCellRules(cell, neighbors);
+        nextState[row][col] = { isAlive: willLive, ownerId: willLive ? newOwnerId : undefined };
       }
     }
 
@@ -247,9 +345,16 @@ export class Game extends Scene {
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const cell = this.grid[row][col];
-        cell.isAlive = nextState[row][col];
-        cell.sprite.setFillStyle(cell.isAlive ? ALIVE_COLOR : DEAD_COLOR);
+        const newState = nextState[row][col];
+        cell.isAlive = newState.isAlive;
+        cell.ownerId = newState.ownerId;
+        cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(cell.ownerId!) : DEAD_COLOR);
       }
+    }
+
+    // emit grid update to other players
+    if (this.roomMetadata) {
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
     }
   }
 }

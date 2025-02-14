@@ -9,15 +9,11 @@ import {
   CreateGameRoomSchema,
   PlayerStatus,
   PlayerWithStatusSchema,
+  GameState,
+  CellState,
 } from "@game/shared";
 import { getRandomUnusedColor } from "@game/shared";
 import { z } from "zod";
-
-interface GameState {
-  grid: boolean[][];
-  generation: number;
-  lastUpdated: string;
-}
 
 const GameRoomWithStatusSchema = GameRoomMetadataSchema.extend({
   players: z.array(PlayerWithStatusSchema),
@@ -46,7 +42,7 @@ class GameRoomService {
     return state ? JSON.parse(state) : null;
   }
 
-  async updateGameState(gameRoomId: string, grid: boolean[][]): Promise<GameState> {
+  async updateGameState(gameRoomId: string, grid: CellState[][]): Promise<GameState> {
     const currentState = await this.getGameState(gameRoomId);
     const newState: GameState = {
       grid,
