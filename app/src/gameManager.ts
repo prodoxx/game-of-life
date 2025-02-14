@@ -9,6 +9,8 @@ import { apiService } from "./services/api";
 import { viewLoader } from "./services/viewLoader";
 import { socketService } from "./services/socketService";
 import type { AxiosError } from "axios";
+// @ts-ignore
+import Toastify from "toastify-js";
 
 const ErrorMessageSchema = z.object({
   message: z.string(),
@@ -206,25 +208,33 @@ class GameManager {
 
   private setupSocketEventHandlers(): void {
     // handle room state update
-    socketService.onRoomState((data) => {
+    socketService.onRoomState((data: GameRoomMetadata) => {
       if (!this.gameRoomMetadata) return;
 
-      this.gameRoomMetadata.players = data.members.map(
-        (member) =>
-          ({
-            id: member.userId,
-            name: member.name,
-            color: member.color,
-            isHost: member.isHost,
-            status: member.status,
-            lastStatusChange: member.lastStatusChange,
-          } as PlayerWithStatus)
-      );
+      try {
+        this.gameRoomMetadata = data;
 
-      const playersGridElement = document.getElementById("players-grid");
-      if (playersGridElement) {
-        this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
+        const playersGridElement = document.getElementById("players-grid");
+        if (playersGridElement) {
+          this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
+        }
+      } catch (error) {
+        console.error("Error updating room state:", error);
       }
+    });
+
+    // handle socket errors
+    socketService.onError(({ message }) => {
+      Toastify.default({
+        text: message,
+        duration: 3000,
+        close: true,
+        gravity: "top",
+        position: "right",
+        style: {
+          background: "rgb(239 68 68)", // red
+        },
+      }).showToast();
     });
 
     // handle player joined
@@ -269,6 +279,14 @@ class GameManager {
         this.gameRoomMetadata.players = updatedPlayers;
         this.updatePlayersGrid(playersGridElement, updatedPlayers);
       }
+    });
+
+    // handle game started
+    socketService.onGameStarted((gameRoomMetadata) => {
+      if (!this.gameRoomMetadata) return;
+      this.gameRoomMetadata = gameRoomMetadata;
+      this.hideModal();
+      this.game.scene.start("Game", { gameRoomMetadata });
     });
   }
 
@@ -497,15 +515,11 @@ class GameManager {
   }
 
   private async handleStartGame(): Promise<void> {
-    if (!this.startGameBtn || !this.startGameSpinner) return;
+    if (!this.startGameBtn || !this.startGameSpinner || !this.gameRoomMetadata) return;
 
     try {
       this.showLoading(this.startGameBtn, this.startGameSpinner);
-      // TODO: remove this
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      this.hideModal();
-      this.game.scene.start("Game", { playerName: this.hostName });
+      socketService.startGame(this.gameRoomMetadata.id);
     } catch (error) {
       console.error("Error starting game:", error);
     } finally {

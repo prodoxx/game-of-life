@@ -1,21 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { config } from "../config";
-import type { PlayerStatus } from "@game/shared";
-
-interface RoomMember {
-  userId: string;
-  name: string;
-  color: string;
-  isHost: boolean;
-  status: PlayerStatus;
-  lastStatusChange: string;
-}
-
-interface GameRoomState {
-  members: RoomMember[];
-  gameState: any; // TODO: define game state type
-  hasStarted: boolean;
-}
+import type { GameRoomMetadata } from "@game/shared";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -65,7 +50,7 @@ class SocketService {
     this.socket.disconnect();
   }
 
-  public joinRoom(roomId: string, userId: string, name: string): Promise<GameRoomState> {
+  public joinRoom(roomId: string, userId: string, name: string): Promise<GameRoomMetadata> {
     return new Promise((resolve, reject) => {
       if (!this.socket) {
         reject(new Error("Socket not initialized"));
@@ -73,7 +58,7 @@ class SocketService {
       }
 
       // handle room state response
-      this.socket.once("game:room-state", (state: GameRoomState) => {
+      this.socket.once("game:room-state", (state: GameRoomMetadata) => {
         resolve(state);
       });
 
@@ -87,7 +72,7 @@ class SocketService {
     this.socket.emit("game:leave", { roomId });
   }
 
-  public onRoomState(callback: (state: GameRoomState) => void): void {
+  public onRoomState(callback: (state: GameRoomMetadata) => void): void {
     this.socket?.on("game:room-state", callback);
   }
 
@@ -115,6 +100,15 @@ class SocketService {
 
   public onError(callback: (error: { message: string }) => void): void {
     this.socket?.on("game:error", callback);
+  }
+
+  public startGame(roomId: string): void {
+    if (!this.socket) return;
+    this.socket.emit("game:start", { roomId });
+  }
+
+  public onGameStarted(callback: (gameRoomMetadata: GameRoomMetadata) => void): void {
+    this.socket?.on("game:started", callback);
   }
 }
 
