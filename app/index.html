@@ -11,6 +11,31 @@
     <div id="app" class="relative min-h-screen">
       <div id="game-container"></div>
 
+      <!-- Pattern Selection -->
+      <div class="fixed top-8 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm rounded-lg p-3 z-10">
+        <h2 class="text-white text-sm font-bold mb-2 text-center">Select a Predefined Pattern</h2>
+        <div class="flex gap-4">
+          <img
+            src="/images/flower.png"
+            alt="Flower Pattern"
+            class="w-16 h-16 cursor-pointer hover:ring-2 hover:ring-white rounded transition-all bg-white/10"
+            data-pattern="flower"
+          />
+          <img
+            src="/images/blinker.gif"
+            alt="Blinker Pattern"
+            class="w-16 h-16 cursor-pointer hover:ring-2 hover:ring-white rounded transition-all bg-white/10"
+            data-pattern="blinker"
+          />
+          <img
+            src="/images/glider.gif"
+            alt="Glider Pattern"
+            class="w-16 h-16 cursor-pointer hover:ring-2 hover:ring-white rounded transition-all bg-white/10"
+            data-pattern="glider"
+          />
+        </div>
+      </div>
+
       <!-- Player List -->
       <div
         id="player-list"
