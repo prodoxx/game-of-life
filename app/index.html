@@ -54,6 +54,22 @@
           <div id="modal-content"></div>
         </div>
       </div>
+
+      <!-- Game Controls -->
+      <div
+        id="game-controls"
+        class="fixed bottom-8 left-1/2 -translate-x-1/2 bg-black/50 backdrop-blur-sm rounded-lg p-3 z-10 text-center"
+      >
+        <div id="game-state" class="mb-2">
+          <span class="text-white text-sm font-bold">Status: </span>
+          <span id="game-status" class="text-white text-sm">Stopped</span>
+        </div>
+        <div class="text-white/80 text-xs space-y-1">
+          <p><span class="font-bold">Space</span> - Start/Pause</p>
+          <p><span class="font-bold">R</span> - Reset</p>
+          <p><span class="font-bold">Click</span> - Toggle Cell</p>
+        </div>
+      </div>
     </div>
     <script type="module" src="/src/main.ts"></script>
   </body>

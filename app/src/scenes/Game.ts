@@ -37,6 +37,7 @@ export class Game extends Scene {
     this.createGrid();
     this.setupInteraction();
     this.setupSocketHandlers();
+    this.updateGameStatus();
   }
 
   private setupSocketHandlers(): void {
@@ -84,7 +85,7 @@ export class Game extends Scene {
 
     // prevent default browser behavior for game controls
     window.addEventListener("keydown", (e) => {
-      if (e.code === "Space" || e.code === "Escape") {
+      if (e.code === "Space" || e.code === "Escape" || e.code === "KeyR") {
         e.preventDefault();
       }
     });
@@ -103,6 +104,11 @@ export class Game extends Scene {
     // esc to stop
     keyboard.on("keydown-ESC", () => {
       this.stopGenerations();
+    });
+
+    // r to reset
+    keyboard.on("keydown-R", () => {
+      this.resetGrid();
     });
   }
 
@@ -129,6 +135,17 @@ export class Game extends Scene {
     this.gridContainer.y += (newWorldPoint.y - worldPoint.y) * newScale;
   }
 
+  private updateGameStatus(): void {
+    const statusElement = document.getElementById("game-status");
+    if (!statusElement) return;
+
+    let status = "Stopped";
+    if (this.isRunning) {
+      status = this.isPaused ? "Paused" : "Running";
+    }
+    statusElement.textContent = status;
+  }
+
   startGenerations(): void {
     if (!this.isRunning) {
       this.isRunning = true;
@@ -139,6 +156,7 @@ export class Game extends Scene {
         callbackScope: this,
         loop: true,
       });
+      this.updateGameStatus();
     }
   }
 
@@ -148,6 +166,7 @@ export class Game extends Scene {
       this.isPaused = false;
       this.generationTimer?.destroy();
       this.generationTimer = undefined;
+      this.updateGameStatus();
     }
   }
 
@@ -155,6 +174,7 @@ export class Game extends Scene {
     if (this.isRunning && !this.isPaused && this.generationTimer) {
       this.isPaused = true;
       this.generationTimer.paused = true;
+      this.updateGameStatus();
     }
   }
 
@@ -162,6 +182,7 @@ export class Game extends Scene {
     if (this.isRunning && this.isPaused && this.generationTimer) {
       this.isPaused = false;
       this.generationTimer.paused = false;
+      this.updateGameStatus();
     }
   }
 
@@ -442,6 +463,27 @@ export class Game extends Scene {
         this.toggleCell(row, col, true);
       }
     });
+
+    // emit grid update to other players
+    if (this.roomMetadata) {
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+    }
+  }
+
+  private resetGrid(): void {
+    // stop generations if running
+    this.stopGenerations();
+
+    // reset all cells to dead state
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        const cell = this.grid[row][col];
+        cell.isAlive = false;
+        cell.ownerId = undefined;
+        cell.color = undefined;
+        cell.sprite.setFillStyle(DEAD_COLOR);
+      }
+    }
 
     // emit grid update to other players
     if (this.roomMetadata) {
