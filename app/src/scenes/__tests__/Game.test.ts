@@ -3,6 +3,7 @@ import { Game } from "../Game";
 import { Cell } from "../../types";
 import * as constants from "../../constants";
 import { MockRectangle, MockPointerEvent } from "./mocks/phaser";
+import { PlayerStatus } from "@game/shared";
 
 type Mock = ReturnType<typeof vi.fn>;
 
@@ -123,77 +124,56 @@ describe("Game Scene", () => {
 
     beforeEach(() => {
       grid = (game as unknown as { grid: Cell[][] }).grid;
+      game["roomMetadata"] = {
+        id: "test-room",
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
+        hasStarted: true,
+        players: [
+          {
+            id: "player1",
+            name: "Player 1",
+            color: "#FF0000",
+            status: PlayerStatus.Active,
+            isHost: true,
+            lastStatusChange: new Date().toISOString(),
+          },
+          {
+            id: "player2",
+            name: "Player 2",
+            color: "#00FF00",
+            status: PlayerStatus.Active,
+            isHost: false,
+            lastStatusChange: new Date().toISOString(),
+          },
+        ],
+      };
     });
 
-    describe("Underpopulation Rule", () => {
+    describe("Core Rules", () => {
       it("happy: live cell with no neighbors should die", () => {
-        // set up initial state
+        game["currentPlayerId"] = "player1";
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
-
-        // simulate next generation
         (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
         expect(grid[1][1].isAlive).toBe(false);
       });
 
-      it("happy: live cell with one neighbor should die", () => {
+      it("happy: live cell with two or three neighbors should survive", () => {
+        game["currentPlayerId"] = "player1";
         // set up initial state
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
-
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        expect(grid[1][1].isAlive).toBe(false);
-        expect(grid[1][2].isAlive).toBe(false);
-      });
-    });
-
-    describe("Survival Rule", () => {
-      it("happy: live cell with two neighbors should survive", () => {
-        // set up initial state
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
-
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        expect(grid[1][1].isAlive).toBe(true);
-      });
-
-      it("happy: live cell with three neighbors should survive", () => {
-        // set up initial state
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 2);
-
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        expect(grid[1][1].isAlive).toBe(true);
-      });
-    });
-
-    describe("Overcrowding Rule", () => {
-      it("happy: live cell with more than three neighbors should die", () => {
-        // set up initial state with 4 neighbors
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1); // center
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // top
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // left
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // right
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1); // bottom
 
         // simulate next generation
         (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        expect(grid[1][1].isAlive).toBe(false);
+        expect(grid[1][1].isAlive).toBe(true);
+        expect(grid[1][1].color).toBe("#FF0000");
+        expect(grid[1][1].ownerId).toBe("player1");
       });
-    });
 
-    describe("Reproduction Rule", () => {
       it("happy: dead cell with exactly three neighbors should become alive", () => {
+        game["currentPlayerId"] = "player1";
         // set up initial state
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
@@ -201,28 +181,62 @@ describe("Game Scene", () => {
 
         // simulate next generation
         (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
         expect(grid[1][1].isAlive).toBe(true);
       });
+    });
 
-      it("happy: dead cell with two or four neighbors should stay dead", () => {
-        // set up initial state with 2 neighbors
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+    describe("Color Reproduction Rules", () => {
+      it("happy: should calculate average color from different neighbors", () => {
+        // set up two neighbors with different colors
+        game["currentPlayerId"] = "player1";
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
 
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        expect(grid[1][1].isAlive).toBe(false);
-
-        // add two more neighbors (4 total)
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1);
+        game["currentPlayerId"] = "player2";
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // green
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // green
 
         // simulate next generation
         (game as unknown as { nextGeneration: () => void }).nextGeneration();
 
+        // verify the new cell is alive with averaged color
+        expect(grid[1][1].isAlive).toBe(true);
+        expect(grid[1][1].color).toBe("#55AA00"); // Two-thirds of FF is AA for green component
+      });
+
+      it("happy: should handle same colored neighbors", () => {
+        // set up three neighbors with the same color
+        game["currentPlayerId"] = "player1";
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // red
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // red
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        // verify the new cell inherits the color and owner
+        expect(grid[1][1].isAlive).toBe(true);
+        expect(grid[1][1].color).toBe("#FF0000");
+        expect(grid[1][1].ownerId).toBe("player1");
+      });
+
+      it("happy: should handle dead neighbors", () => {
+        // set up two live neighbors and one dead
+        game["currentPlayerId"] = "player1";
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // red
+
+        // verify dead neighbor properties
+        expect(grid[1][2].isAlive).toBe(false);
+        expect(grid[1][2].color).toBeUndefined();
+        expect(grid[1][2].ownerId).toBeUndefined();
+
+        // simulate next generation
+        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+
+        // verify target cell stays dead (needs exactly 3 neighbors)
         expect(grid[1][1].isAlive).toBe(false);
+        expect(grid[1][1].color).toBeUndefined();
+        expect(grid[1][1].ownerId).toBeUndefined();
       });
     });
 
@@ -469,6 +483,80 @@ describe("Game Scene", () => {
           expect(game["isPaused"]).toBe(false);
           expect(game["generationTimer"]?.paused).toBe(false);
         }
+      });
+    });
+  });
+
+  describe("Helper Functions", () => {
+    beforeEach(() => {
+      game["roomMetadata"] = {
+        id: "test-room",
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
+        hasStarted: true,
+        players: [
+          {
+            id: "player1",
+            name: "Player 1",
+            color: "#FF0000",
+            status: PlayerStatus.Active,
+            isHost: true,
+            lastStatusChange: new Date().toISOString(),
+          },
+        ],
+      };
+    });
+
+    describe("getPlayerColor", () => {
+      it("happy: should return player's color as number", () => {
+        const color = (game as any).getPlayerColor("player1");
+        expect(color).toBe(parseInt("FF0000", 16));
+      });
+
+      it("sad: should return DEAD_COLOR for non-existent player", () => {
+        const color = (game as any).getPlayerColor("nonexistent");
+        expect(color).toBe(constants.DEAD_COLOR);
+      });
+
+      it("sad: should return DEAD_COLOR for undefined playerId", () => {
+        const color = (game as any).getPlayerColor(undefined);
+        expect(color).toBe(constants.DEAD_COLOR);
+      });
+
+      describe("Edge Cases", () => {
+        describe("getPlayerColor", () => {
+          it("sad: should handle undefined roomMetadata", () => {
+            game["roomMetadata"] = undefined;
+            const color = (game as any).getPlayerColor("player1");
+            expect(color).toBe(constants.DEAD_COLOR);
+          });
+
+          it("sad: should handle empty players array", () => {
+            game["roomMetadata"] = {
+              id: "test-room",
+              createdAt: new Date().toISOString(),
+              lastActivity: new Date().toISOString(),
+              hasStarted: true,
+              players: [],
+            };
+            const color = (game as any).getPlayerColor("player1");
+            expect(color).toBe(constants.DEAD_COLOR);
+          });
+        });
+      });
+    });
+
+    describe("getAverageColor", () => {
+      it("happy: should calculate average of multiple colors", () => {
+        const result = (game as any).getAverageColor(["#FF0000", "#00FF00"]);
+        expect(result.color).toBe("#7F7F00");
+        expect(result.ownerId).toBeUndefined();
+      });
+
+      it("happy: should return exact color when all colors are the same", () => {
+        const result = (game as any).getAverageColor(["#FF0000", "#FF0000"]);
+        expect(result.color).toBe("#FF0000");
+        expect(result.ownerId).toBe("player1");
       });
     });
   });

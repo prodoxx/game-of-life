@@ -5,6 +5,10 @@ import { isCuid } from "@paralleldrive/cuid2";
 export const CellStateSchema = z.object({
   isAlive: z.boolean(),
   ownerId: z.string().refine(isCuid).optional(),
+  color: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .optional(), // hex color string
 });
 
 export type CellState = z.infer<typeof CellStateSchema>;

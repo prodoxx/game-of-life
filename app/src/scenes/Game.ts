@@ -6,7 +6,6 @@ import {
   GRID_BORDER_COLOR,
   DEAD_COLOR,
   NEIGHBOR_OFFSETS,
-  GAME_RULES,
   GENERATION_TICK_MS,
 } from "../constants";
 import { Cell } from "../types";
@@ -52,7 +51,17 @@ export class Game extends Scene {
         const cell = this.grid[row][col];
         cell.isAlive = cellState.isAlive;
         cell.ownerId = cellState.ownerId;
-        cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(cell.ownerId!) : DEAD_COLOR);
+        cell.color = cellState.color;
+
+        if (cell.isAlive) {
+          if (cell.color) {
+            cell.sprite.setFillStyle(parseInt(cell.color.slice(1), 16));
+          } else if (cell.ownerId) {
+            cell.sprite.setFillStyle(this.getPlayerColor(cell.ownerId));
+          }
+        } else {
+          cell.sprite.setFillStyle(DEAD_COLOR);
+        }
       }
     }
   }
@@ -62,6 +71,7 @@ export class Game extends Scene {
       row.map((cell) => ({
         isAlive: cell.isAlive,
         ownerId: cell.ownerId,
+        color: cell.color,
       }))
     );
   }
@@ -222,15 +232,108 @@ export class Game extends Scene {
     if (!player) return DEAD_COLOR;
 
     const playerColor = player.color;
-    // convert hex color to number
-    return parseInt(playerColor.slice(1), 16);
+    // convert hex color to number, handle invalid colors by returning DEAD_COLOR
+    const colorNum = parseInt(playerColor.slice(1), 16);
+    return isNaN(colorNum) ? DEAD_COLOR : colorNum;
+  }
+
+  private getAverageColor(neighborColors: string[]): { color: string; ownerId?: string } {
+    if (neighborColors.length === 0) return { color: `#${DEAD_COLOR.toString(16).padStart(6, "0").toUpperCase()}` };
+
+    // convert hex to rgb components and calculate totals
+    let totalR = 0;
+    let totalG = 0;
+    let totalB = 0;
+
+    for (const color of neighborColors) {
+      if (color.startsWith("#") && color.length === 7) {
+        totalR += parseInt(color.slice(1, 3), 16);
+        totalG += parseInt(color.slice(3, 5), 16);
+        totalB += parseInt(color.slice(5, 7), 16);
+      }
+    }
+
+    // calculate average for each component
+    const avgColor = {
+      r: Math.floor(totalR / neighborColors.length),
+      g: Math.floor(totalG / neighborColors.length),
+      b: Math.floor(totalB / neighborColors.length),
+    };
+
+    // convert back to hex (ensuring uppercase)
+    const hexColor =
+      "#" +
+      avgColor.r.toString(16).padStart(2, "0").toUpperCase() +
+      avgColor.g.toString(16).padStart(2, "0").toUpperCase() +
+      avgColor.b.toString(16).padStart(2, "0").toUpperCase();
+
+    // find if this exact color belongs to any player
+    const matchingPlayer = this.roomMetadata?.players.find((p) => p.color.toUpperCase() === hexColor);
+
+    return {
+      color: hexColor,
+      ownerId: matchingPlayer?.id,
+    };
+  }
+
+  private getAliveNeighborColors(cell: Cell): { colors: string[]; owners: string[] } {
+    const colors: string[] = [];
+    const owners: string[] = [];
+    const row = this.grid.findIndex((r) => r.includes(cell));
+    const col = this.grid[row].findIndex((c) => c === cell);
+
+    for (const [_direction, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
+      const neighborRow = row + rowOffset;
+      const neighborCol = col + colOffset;
+
+      const isWithinBounds = neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
+
+      if (isWithinBounds) {
+        const neighbor = this.grid[neighborRow][neighborCol];
+        if (neighbor.isAlive && neighbor.ownerId) {
+          const player = this.roomMetadata?.players.find((p) => p.id === neighbor.ownerId);
+          if (player) {
+            colors.push(player.color);
+            owners.push(neighbor.ownerId);
+          }
+        }
+      }
+    }
+
+    return { colors, owners };
+  }
+
+  private applyCellRules(cell: Cell, neighbors: number): { willLive: boolean; newOwnerId?: string; color?: string } {
+    // a cell survives if it has 2 or 3 neighbors
+    if (cell.isAlive && (neighbors === 2 || neighbors === 3)) {
+      return { willLive: true, newOwnerId: cell.ownerId, color: cell.color };
+    }
+
+    // a dead cell becomes alive if it has exactly 3 neighbors
+    if (!cell.isAlive && neighbors === 3) {
+      const { colors } = this.getAliveNeighborColors(cell);
+      const { color, ownerId } = this.getAverageColor(colors);
+      return { willLive: true, newOwnerId: ownerId, color };
+    }
+
+    // in all other cases, the cell dies or stays dead
+    return { willLive: false };
   }
 
   private toggleCell(row: number, col: number): void {
     const cell = this.grid[row][col];
     cell.isAlive = !cell.isAlive;
-    cell.ownerId = cell.isAlive ? this.currentPlayerId : undefined;
-    cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(this.currentPlayerId!) : DEAD_COLOR);
+
+    if (cell.isAlive && this.currentPlayerId) {
+      const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
+      cell.ownerId = this.currentPlayerId;
+      cell.color = player?.color;
+      cell.sprite.setFillStyle(this.getPlayerColor(this.currentPlayerId));
+    } else {
+      cell.ownerId = undefined;
+      cell.color = undefined;
+      cell.sprite.setFillStyle(DEAD_COLOR);
+    }
 
     // emit grid update to other players
     if (this.roomMetadata) {
@@ -255,79 +358,9 @@ export class Game extends Scene {
     return count;
   }
 
-  private applyCellRules(cell: Cell, neighbors: number): { willLive: boolean; newOwnerId?: string } {
-    const matchingRule = GAME_RULES.find(
-      (rule) => rule.when.currentState === cell.isAlive && rule.when.neighborCount === neighbors
-    );
-
-    const willLive = matchingRule?.then ?? false;
-
-    // if the cell will live, determine ownership
-    if (willLive) {
-      if (cell.isAlive) {
-        // surviving cell keeps its owner
-        return { willLive, newOwnerId: cell.ownerId };
-      } else {
-        // reproducing cell - find majority (average) owner among live neighbors
-        const neighborOwners = this.getAliveNeighborOwners(cell);
-        return { willLive, newOwnerId: this.getMajorityOwner(neighborOwners) };
-      }
-    }
-
-    return { willLive };
-  }
-
-  private getAliveNeighborOwners(cell: Cell): string[] {
-    const owners: string[] = [];
-    const row = this.grid.findIndex((r) => r.includes(cell));
-    const col = this.grid[row].findIndex((c) => c === cell);
-
-    for (const [_direction, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
-      const neighborRow = row + rowOffset;
-      const neighborCol = col + colOffset;
-
-      const isWithinBounds = neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
-
-      if (isWithinBounds) {
-        const neighbor = this.grid[neighborRow][neighborCol];
-        if (neighbor.isAlive && neighbor.ownerId) {
-          owners.push(neighbor.ownerId);
-        }
-      }
-    }
-
-    return owners;
-  }
-
-  private getMajorityOwner(owners: string[]): string {
-    if (owners.length === 0) {
-      if (!this.currentPlayerId) {
-        throw new Error("Current player ID is required");
-      }
-      return this.currentPlayerId;
-    }
-
-    const ownerCounts = owners.reduce((acc, owner) => {
-      acc[owner] = (acc[owner] || 0) + 1;
-      return acc;
-    }, {} as Record<string, number>);
-
-    let maxOwner = owners[0];
-    let maxCount = ownerCounts[maxOwner];
-
-    for (const [owner, count] of Object.entries(ownerCounts)) {
-      if (count > maxCount) {
-        maxCount = count;
-        maxOwner = owner;
-      }
-    }
-
-    return maxOwner;
-  }
-
   nextGeneration(): void {
     // create a copy of the current state
-    const nextState: { isAlive: boolean; ownerId?: string }[][] = Array(GRID_ROWS)
+    const nextState: { isAlive: boolean; ownerId?: string; color?: string }[][] = Array(GRID_ROWS)
       .fill(null)
       .map(() => Array(GRID_COLS).fill({ isAlive: false }));
 
@@ -336,8 +369,8 @@ export class Game extends Scene {
       for (let col = 0; col < GRID_COLS; col++) {
         const neighbors = this.countLiveNeighbors(row, col);
         const cell = this.grid[row][col];
-        const { willLive, newOwnerId } = this.applyCellRules(cell, neighbors);
-        nextState[row][col] = { isAlive: willLive, ownerId: willLive ? newOwnerId : undefined };
+        const { willLive, newOwnerId, color } = this.applyCellRules(cell, neighbors);
+        nextState[row][col] = { isAlive: willLive, ownerId: willLive ? newOwnerId : undefined, color };
       }
     }
 
@@ -348,7 +381,19 @@ export class Game extends Scene {
         const newState = nextState[row][col];
         cell.isAlive = newState.isAlive;
         cell.ownerId = newState.ownerId;
-        cell.sprite.setFillStyle(cell.isAlive ? this.getPlayerColor(cell.ownerId!) : DEAD_COLOR);
+        cell.color = newState.color;
+
+        // if it's a reproduction with a new color, use that color directly
+        if (newState.color) {
+          cell.sprite.setFillStyle(parseInt(newState.color.slice(1), 16));
+        } else if (cell.isAlive && cell.ownerId) {
+          const player = this.roomMetadata?.players.find((p) => p.id === cell.ownerId);
+          cell.color = player?.color;
+          cell.sprite.setFillStyle(this.getPlayerColor(cell.ownerId));
+        } else {
+          cell.color = undefined;
+          cell.sprite.setFillStyle(DEAD_COLOR);
+        }
       }
     }
 
