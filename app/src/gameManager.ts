@@ -28,6 +28,7 @@ class GameManager {
   private submitButton: HTMLButtonElement | null = null;
   private loadingSpinner: HTMLElement | null = null;
   private joinForm: HTMLFormElement | null = null;
+  private patternSelection: HTMLElement | null = null;
 
   constructor(private game: Game) {
     this.init();
@@ -342,6 +343,7 @@ class GameManager {
       currentPlayerId: userIdentificationService.getId(),
     });
     this.updateGamePlayerList(gameRoomMetadata.players);
+    this.showPatternSelection();
   }
 
   private async showCreateRoomWithError(): Promise<void> {
@@ -591,6 +593,13 @@ class GameManager {
 
   public hideModal(): void {
     this.modal?.classList.add("hidden");
+  }
+
+  private showPatternSelection(): void {
+    this.patternSelection = document.getElementById("pattern-selection");
+    if (this.patternSelection) {
+      this.patternSelection.classList.remove("hidden");
+    }
   }
 }
 export default GameManager;

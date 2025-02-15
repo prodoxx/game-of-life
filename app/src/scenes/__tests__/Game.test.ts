@@ -4,11 +4,17 @@ import { Cell } from "../../types";
 import * as constants from "../../constants";
 import { MockRectangle, MockPointerEvent } from "./mocks/phaser";
 import { PlayerStatus } from "@game/shared";
+import { PATTERNS } from "../../patterns";
 
 type Mock = ReturnType<typeof vi.fn>;
 
 // helper function to safely cast Rectangle to MockRectangle
 const asMockRectangle = (sprite: Phaser.GameObjects.Rectangle): MockRectangle => sprite as unknown as MockRectangle;
+
+// mock document for pattern tests
+const mockDocument = {
+  getElementById: vi.fn(),
+};
 
 describe("Game Scene", () => {
   let game: Game;
@@ -92,11 +98,31 @@ describe("Game Scene", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
       const cell = grid[0][0];
 
-      (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 0);
+      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(0, 0);
       expect(cell.isAlive).toBe(true);
 
-      (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 0);
+      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(0, 0);
       expect(cell.isAlive).toBe(false);
+    });
+
+    it("happy: should handle force alive parameter", () => {
+      const grid = (game as unknown as { grid: Cell[][] }).grid;
+      const cell = grid[0][0];
+
+      // Force alive should make cell alive regardless of current state
+      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(
+        0,
+        0,
+        true
+      );
+      expect(cell.isAlive).toBe(true);
+
+      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(
+        0,
+        0,
+        true
+      );
+      expect(cell.isAlive).toBe(true);
     });
 
     it("happy: should handle rapid multiple clicks on same cell", () => {
@@ -558,6 +584,144 @@ describe("Game Scene", () => {
         expect(result.color).toBe("#FF0000");
         expect(result.ownerId).toBe("player1");
       });
+    });
+  });
+
+  describe("Pattern Management", () => {
+    beforeEach(() => {
+      // Setup document mock
+      vi.stubGlobal("document", mockDocument);
+
+      // Mock pattern selection element
+      const mockPatternSelection = {
+        querySelectorAll: vi.fn().mockReturnValue([
+          { getAttribute: () => "flower", addEventListener: vi.fn() },
+          { getAttribute: () => "blinker", addEventListener: vi.fn() },
+          { getAttribute: () => "glider", addEventListener: vi.fn() },
+        ]),
+      };
+      mockDocument.getElementById.mockReturnValue(mockPatternSelection);
+
+      // Initialize game with room metadata and player ID
+      game["roomMetadata"] = {
+        id: "test-room",
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
+        hasStarted: true,
+        players: [
+          {
+            id: "player1",
+            name: "Player 1",
+            color: "#FF0000",
+            status: PlayerStatus.Active,
+            isHost: true,
+            lastStatusChange: new Date().toISOString(),
+          },
+        ],
+      };
+      game["currentPlayerId"] = "player1";
+    });
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("happy: should setup pattern selection listeners", () => {
+      (game as any).setupPatternSelection();
+      expect(mockDocument.getElementById).toHaveBeenCalledWith("pattern-selection");
+    });
+
+    it("happy: should place flower pattern within grid bounds", () => {
+      const grid = (game as unknown as { grid: Cell[][] }).grid;
+      (game as any).placePatternRandomly(PATTERNS.flower);
+
+      // Count alive cells that match the pattern
+      let aliveCount = 0;
+      for (let row = 0; row < constants.GRID_ROWS; row++) {
+        for (let col = 0; col < constants.GRID_COLS; col++) {
+          if (grid[row][col].isAlive) {
+            aliveCount++;
+          }
+        }
+      }
+      expect(aliveCount).toBe(PATTERNS.flower.cells.length);
+    });
+
+    it("happy: should place blinker pattern within grid bounds", () => {
+      const grid = (game as unknown as { grid: Cell[][] }).grid;
+      (game as any).placePatternRandomly(PATTERNS.blinker);
+
+      // Count alive cells that match the pattern
+      let aliveCount = 0;
+      for (let row = 0; row < constants.GRID_ROWS; row++) {
+        for (let col = 0; col < constants.GRID_COLS; col++) {
+          if (grid[row][col].isAlive) {
+            aliveCount++;
+          }
+        }
+      }
+      expect(aliveCount).toBe(PATTERNS.blinker.cells.length);
+    });
+
+    it("happy: should place glider pattern within grid bounds", () => {
+      const grid = (game as unknown as { grid: Cell[][] }).grid;
+      (game as any).placePatternRandomly(PATTERNS.glider);
+
+      // Count alive cells that match the pattern
+      let aliveCount = 0;
+      for (let row = 0; row < constants.GRID_ROWS; row++) {
+        for (let col = 0; col < constants.GRID_COLS; col++) {
+          if (grid[row][col].isAlive) {
+            aliveCount++;
+          }
+        }
+      }
+      expect(aliveCount).toBe(PATTERNS.glider.cells.length);
+    });
+
+    it("happy: should override existing live cells when placing pattern", () => {
+      const grid = (game as unknown as { grid: Cell[][] }).grid;
+
+      // First place a flower pattern
+      (game as any).placePatternRandomly(PATTERNS.flower);
+      const firstPatternCount = PATTERNS.flower.cells.length;
+
+      // Then place a blinker pattern
+      (game as any).placePatternRandomly(PATTERNS.blinker);
+
+      // Count total alive cells
+      let aliveCount = 0;
+      for (let row = 0; row < constants.GRID_ROWS; row++) {
+        for (let col = 0; col < constants.GRID_COLS; col++) {
+          if (grid[row][col].isAlive) {
+            aliveCount++;
+          }
+        }
+      }
+
+      // The alive count should be between blinker length and total of both patterns
+      expect(aliveCount).toBeGreaterThanOrEqual(PATTERNS.blinker.cells.length);
+      expect(aliveCount).toBeLessThanOrEqual(firstPatternCount + PATTERNS.blinker.cells.length);
+    });
+
+    it("sad: should handle invalid pattern selection", () => {
+      const mockPatternSelection = {
+        querySelectorAll: vi
+          .fn()
+          .mockReturnValue([{ getAttribute: () => "invalid-pattern", addEventListener: vi.fn() }]),
+      };
+      mockDocument.getElementById.mockReturnValue(mockPatternSelection);
+
+      expect(() => {
+        (game as any).setupPatternSelection();
+      }).not.toThrow();
+    });
+
+    it("sad: should handle missing pattern selection element", () => {
+      mockDocument.getElementById.mockReturnValue(null);
+      expect(() => {
+        (game as any).setupPatternSelection();
+      }).not.toThrow();
     });
   });
 });

@@ -11,6 +11,7 @@ import {
 import { Cell } from "../types";
 import { GameRoomMetadata, CellState } from "@game/shared";
 import { socketService } from "../services/socketService";
+import { PATTERNS, Pattern } from "../patterns";
 
 export class Game extends Scene {
   private grid: Cell[][] = [];
@@ -28,6 +29,7 @@ export class Game extends Scene {
   init(data: { roomMetadata: GameRoomMetadata; currentPlayerId: string }) {
     this.roomMetadata = data.roomMetadata;
     this.currentPlayerId = data.currentPlayerId;
+    this.setupPatternSelection();
   }
 
   create() {
@@ -320,9 +322,9 @@ export class Game extends Scene {
     return { willLive: false };
   }
 
-  private toggleCell(row: number, col: number): void {
+  private toggleCell(row: number, col: number, forceAlive: boolean = false): void {
     const cell = this.grid[row][col];
-    cell.isAlive = !cell.isAlive;
+    cell.isAlive = forceAlive || !cell.isAlive;
 
     if (cell.isAlive && this.currentPlayerId) {
       const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
@@ -396,6 +398,50 @@ export class Game extends Scene {
         }
       }
     }
+
+    // emit grid update to other players
+    if (this.roomMetadata) {
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+    }
+  }
+
+  private setupPatternSelection(): void {
+    const patternSelection = document.getElementById("pattern-selection");
+    if (!patternSelection) return;
+
+    const patternImages = patternSelection.querySelectorAll("img[data-pattern]");
+    patternImages.forEach((img) => {
+      img.addEventListener("click", () => {
+        const patternName = img.getAttribute("data-pattern");
+        if (patternName && PATTERNS[patternName]) {
+          this.placePatternRandomly(PATTERNS[patternName]);
+        }
+      });
+    });
+  }
+
+  private placePatternRandomly(pattern: Pattern): void {
+    // calculate valid placement area considering pattern dimensions
+    const validStartRow = Math.floor(pattern.height / 2);
+    const validEndRow = GRID_ROWS - Math.ceil(pattern.height / 2);
+    const validStartCol = Math.floor(pattern.width / 2);
+    const validEndCol = GRID_COLS - Math.ceil(pattern.width / 2);
+
+    // randomly select center position for pattern
+    const centerRow = Math.floor(Math.random() * (validEndRow - validStartRow)) + validStartRow;
+    const centerCol = Math.floor(Math.random() * (validEndCol - validStartCol)) + validStartCol;
+
+    // place pattern cells
+    pattern.cells.forEach(([rowOffset, colOffset]) => {
+      const row = centerRow + rowOffset;
+      const col = centerCol + colOffset;
+
+      // ensure we're within grid bounds
+      if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
+        // pattern cells take precedence over existing live cells
+        this.toggleCell(row, col, true);
+      }
+    });
 
     // emit grid update to other players
     if (this.roomMetadata) {
