@@ -6,11 +6,13 @@ on:
       - 'api/**'
       - 'shared/**'
       - '.github/workflows/api-ci.yml'
+      - '.eslintrc.json'
   pull_request:
     paths:
       - 'api/**'
       - 'shared/**'
       - '.github/workflows/api-ci.yml'
+      - '.eslintrc.json'
 
 jobs:
   test-and-build:
