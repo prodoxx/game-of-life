@@ -46,9 +46,9 @@ class GameManager {
     const roomId = this.getRoomIdFromUrl();
     if (roomId) {
       await this.handleExistingRoom(roomId);
-    } else {
-      await this.setup();
+      return;
     }
+    await this.setup();
   }
 
   private getRoomIdFromUrl(): string | null {
