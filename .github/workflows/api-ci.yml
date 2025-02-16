@@ -3,16 +3,16 @@ name: API CI
 on:
   push:
     paths:
-      - 'api/**'
-      - 'shared/**'
-      - '.github/workflows/api-ci.yml'
-      - '.eslintrc.json'
+      - "api/**"
+      - "shared/**"
+      - ".github/workflows/api-ci.yml"
+      - ".eslintrc.json"
   pull_request:
     paths:
-      - 'api/**'
-      - 'shared/**'
-      - '.github/workflows/api-ci.yml'
-      - '.eslintrc.json'
+      - "api/**"
+      - "shared/**"
+      - ".github/workflows/api-ci.yml"
+      - ".eslintrc.json"
 
 jobs:
   test-and-build:
@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version-file: 'api/.node-version'
+          node-version-file: "api/.node-version"
 
       - name: Install pnpm
         uses: pnpm/action-setup@v4
@@ -32,19 +32,31 @@ jobs:
           version: 8
 
       - name: Get pnpm store directory
+        id: pnpm-cache
         shell: bash
         run: |
-          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
 
       - name: Setup pnpm cache
         uses: actions/cache@v4
         with:
-          path: ${{ env.STORE_PATH }}
-          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('api/pnpm-lock.yaml') }}
+          path: |
+            ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+            api/node_modules
+            shared/node_modules
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('**/pnpm-lock.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-store-
+            ${{ runner.os }}-pnpm-
 
-      - name: Install dependencies
+      - name: Install shared dependencies
+        working-directory: ./shared
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Build shared package
+        working-directory: ./shared
+        run: pnpm build
+
+      - name: Install api dependencies
         working-directory: ./api
         run: pnpm install --no-frozen-lockfile
 
