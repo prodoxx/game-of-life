@@ -23,7 +23,11 @@ class ApiService {
     return response.data.data;
   }
 
-  public async joinRoom(roomId: string, playerName: string, playerId: string): Promise<GameRoomMetadata> {
+  public async joinRoom(
+    roomId: string,
+    playerName: string,
+    playerId: string,
+  ): Promise<GameRoomMetadata> {
     const response = await api.post<{ data: GameRoomMetadata }>(`/v1/rooms/${roomId}/join`, {
       playerName,
       playerId,

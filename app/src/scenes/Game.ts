@@ -75,7 +75,7 @@ export class Game extends Scene {
         isAlive: cell.isAlive,
         ownerId: cell.ownerId,
         color: cell.color,
-      }))
+      })),
     );
   }
 
@@ -122,13 +122,19 @@ export class Game extends Scene {
     const newScale = Phaser.Math.Clamp(this.gridContainer.scale * scaleDelta, 1, 1.8);
 
     // convert pointer position to world space before zoom
-    const worldPoint = this.gridContainer.getWorldTransformMatrix().invert().transformPoint(pointer.x, pointer.y);
+    const worldPoint = this.gridContainer
+      .getWorldTransformMatrix()
+      .invert()
+      .transformPoint(pointer.x, pointer.y);
 
     // update scale
     this.gridContainer.setScale(newScale);
 
     // convert same pointer position back to world space after scale change
-    const newWorldPoint = this.gridContainer.getWorldTransformMatrix().invert().transformPoint(pointer.x, pointer.y);
+    const newWorldPoint = this.gridContainer
+      .getWorldTransformMatrix()
+      .invert()
+      .transformPoint(pointer.x, pointer.y);
 
     // zoom towards pointer
     this.gridContainer.x += (newWorldPoint.x - worldPoint.x) * newScale;
@@ -195,17 +201,23 @@ export class Game extends Scene {
   }
 
   private setupInteraction(): void {
-    this.input.on("gameobjectdown", (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.Rectangle) => {
-      const row = gameObject.getData("row");
-      const col = gameObject.getData("col");
-      this.toggleCell(row, col);
-    });
+    this.input.on(
+      "gameobjectdown",
+      (_pointer: Phaser.Input.Pointer, gameObject: Phaser.GameObjects.Rectangle) => {
+        const row = gameObject.getData("row");
+        const col = gameObject.getData("col");
+        this.toggleCell(row, col);
+      },
+    );
 
-    this.input.on("wheel", (pointer: Phaser.Input.Pointer, _gameObjects: any, _deltaX: number, deltaY: number) => {
-      // use a smaller zoom factor for slower zooming
-      const zoomFactor = deltaY > 0 ? 0.98 : 1.02;
-      this.handleZoom(zoomFactor, pointer);
-    });
+    this.input.on(
+      "wheel",
+      (pointer: Phaser.Input.Pointer, _gameObjects: any, _deltaX: number, deltaY: number) => {
+        // use a smaller zoom factor for slower zooming
+        const zoomFactor = deltaY > 0 ? 0.98 : 1.02;
+        this.handleZoom(zoomFactor, pointer);
+      },
+    );
 
     this.setupGenerationKeyboardControls();
   }
@@ -231,7 +243,13 @@ export class Game extends Scene {
         const x = col * CELL_SIZE;
         const y = row * CELL_SIZE;
 
-        const cell = this.add.rectangle(x + CELL_SIZE / 2, y + CELL_SIZE / 2, CELL_SIZE - 1, CELL_SIZE - 1, DEAD_COLOR);
+        const cell = this.add.rectangle(
+          x + CELL_SIZE / 2,
+          y + CELL_SIZE / 2,
+          CELL_SIZE - 1,
+          CELL_SIZE - 1,
+          DEAD_COLOR,
+        );
 
         cell.setStrokeStyle(1, GRID_BORDER_COLOR);
         cell.setOrigin(0.5);
@@ -261,7 +279,8 @@ export class Game extends Scene {
   }
 
   private getAverageColor(neighborColors: string[]): { color: string; ownerId?: string } {
-    if (neighborColors.length === 0) return { color: `#${DEAD_COLOR.toString(16).padStart(6, "0").toUpperCase()}` };
+    if (neighborColors.length === 0)
+      return { color: `#${DEAD_COLOR.toString(16).padStart(6, "0").toUpperCase()}` };
 
     // convert hex to rgb components and calculate totals
     let totalR = 0;
@@ -291,7 +310,9 @@ export class Game extends Scene {
       avgColor.b.toString(16).padStart(2, "0").toUpperCase();
 
     // find if this exact color belongs to any player
-    const matchingPlayer = this.roomMetadata?.players.find((p) => p.color.toUpperCase() === hexColor);
+    const matchingPlayer = this.roomMetadata?.players.find(
+      (p) => p.color.toUpperCase() === hexColor,
+    );
 
     return {
       color: hexColor,
@@ -309,7 +330,8 @@ export class Game extends Scene {
       const neighborRow = row + rowOffset;
       const neighborCol = col + colOffset;
 
-      const isWithinBounds = neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
+      const isWithinBounds =
+        neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
 
       if (isWithinBounds) {
         const neighbor = this.grid[neighborRow][neighborCol];
@@ -326,7 +348,10 @@ export class Game extends Scene {
     return { colors, owners };
   }
 
-  private applyCellRules(cell: Cell, neighbors: number): { willLive: boolean; newOwnerId?: string; color?: string } {
+  private applyCellRules(
+    cell: Cell,
+    neighbors: number,
+  ): { willLive: boolean; newOwnerId?: string; color?: string } {
     // a cell survives if it has 2 or 3 neighbors
     if (cell.isAlive && (neighbors === 2 || neighbors === 3)) {
       return { willLive: true, newOwnerId: cell.ownerId, color: cell.color };
@@ -371,7 +396,8 @@ export class Game extends Scene {
       const neighborRow = row + rowOffset;
       const neighborCol = col + colOffset;
 
-      const isWithinBounds = neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
+      const isWithinBounds =
+        neighborRow >= 0 && neighborRow < GRID_ROWS && neighborCol >= 0 && neighborCol < GRID_COLS;
 
       if (isWithinBounds && this.grid[neighborRow][neighborCol].isAlive) {
         count++;
@@ -393,7 +419,11 @@ export class Game extends Scene {
         const neighbors = this.countLiveNeighbors(row, col);
         const cell = this.grid[row][col];
         const { willLive, newOwnerId, color } = this.applyCellRules(cell, neighbors);
-        nextState[row][col] = { isAlive: willLive, ownerId: willLive ? newOwnerId : undefined, color };
+        nextState[row][col] = {
+          isAlive: willLive,
+          ownerId: willLive ? newOwnerId : undefined,
+          color,
+        };
       }
     }
 

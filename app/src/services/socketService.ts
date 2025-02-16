@@ -87,13 +87,19 @@ class SocketService {
       lastStatusChange: string;
       totalMembers: number;
       isReconnected: boolean;
-    }) => void
+    }) => void,
   ): void {
     this.socket?.on("game:player-joined", callback);
   }
 
   public onPlayerLeft(
-    callback: (data: { userId: string; socketId: string; name: string; color: string; totalMembers: number }) => void
+    callback: (data: {
+      userId: string;
+      socketId: string;
+      name: string;
+      color: string;
+      totalMembers: number;
+    }) => void,
   ): void {
     this.socket?.on("game:player-left", callback);
   }
@@ -117,7 +123,7 @@ class SocketService {
   }
 
   public onGameStateUpdated(
-    callback: (data: { grid: CellState[][]; generation: number; lastUpdated: string }) => void
+    callback: (data: { grid: CellState[][]; generation: number; lastUpdated: string }) => void,
   ): void {
     this.socket?.on("game:state-updated", callback);
   }

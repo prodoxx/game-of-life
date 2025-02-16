@@ -9,7 +9,7 @@ import { apiService } from "./services/api";
 import { viewLoader } from "./services/viewLoader";
 import { socketService } from "./services/socketService";
 import type { AxiosError } from "axios";
-// @ts-expect-error
+// @ts-expect-error - Toastify is not typed
 import Toastify from "toastify-js";
 
 const ErrorMessageSchema = z.object({
@@ -87,7 +87,9 @@ class GameManager {
   }
 
   private findCurrentPlayer(): Player | undefined {
-    return this.gameRoomMetadata?.players.find((p: Player) => p.id === userIdentificationService.getId());
+    return this.gameRoomMetadata?.players.find(
+      (p: Player) => p.id === userIdentificationService.getId(),
+    );
   }
 
   private async handleReconnection(currentPlayer: Player): Promise<void> {
@@ -176,7 +178,11 @@ class GameManager {
       this.showLoading(this.submitButton!, this.loadingSpinner!);
 
       // first join via HTTP to reserve spot
-      this.gameRoomMetadata = await apiService.joinRoom(roomId, playerName, userIdentificationService.getId());
+      this.gameRoomMetadata = await apiService.joinRoom(
+        roomId,
+        playerName,
+        userIdentificationService.getId(),
+      );
 
       // then establish socket connection
       socketService.connect();
@@ -536,7 +542,10 @@ class GameManager {
       this.showLoading(this.submitButton, this.loadingSpinner);
 
       // first create room via HTTP
-      this.gameRoomMetadata = await apiService.createRoom(this.hostName, userIdentificationService.getId());
+      this.gameRoomMetadata = await apiService.createRoom(
+        this.hostName,
+        userIdentificationService.getId(),
+      );
 
       // then establish socket connection
       socketService.connect();
@@ -544,7 +553,11 @@ class GameManager {
       // setup socket event handlers before joining room
       this.setupSocketEventHandlers();
 
-      await socketService.joinRoom(this.gameRoomMetadata.id, userIdentificationService.getId(), this.hostName);
+      await socketService.joinRoom(
+        this.gameRoomMetadata.id,
+        userIdentificationService.getId(),
+        this.hostName,
+      );
       await this.loadView(UI_VIEW.JOIN_ROOM_VIEW);
     } catch (error) {
       console.error("Error creating game room:", error);

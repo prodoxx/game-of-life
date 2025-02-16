@@ -101,9 +101,11 @@ export class MockContainer {
 // mock Phaser.Scene
 const mockScene = class MockScene {
   add = {
-    rectangle: vi.fn().mockImplementation((x: number, y: number, width: number, height: number, color: number) => {
-      return new MockRectangle(x, y, width, height, color);
-    }),
+    rectangle: vi
+      .fn()
+      .mockImplementation((x: number, y: number, width: number, height: number, color: number) => {
+        return new MockRectangle(x, y, width, height, color);
+      }),
     container: vi.fn().mockImplementation((x: number = 0, y: number = 0) => {
       return new MockContainer(this, x, y);
     }),
@@ -124,14 +126,16 @@ const mockScene = class MockScene {
   time = {
     addEvent: vi
       .fn()
-      .mockImplementation((config: { delay: number; callback: () => void; callbackScope: any; loop: boolean }) => {
-        const destroyFn = vi.fn();
-        return {
-          destroy: destroyFn,
-          isDestroyed: false,
-          ...config,
-        };
-      }),
+      .mockImplementation(
+        (config: { delay: number; callback: () => void; callbackScope: any; loop: boolean }) => {
+          const destroyFn = vi.fn();
+          return {
+            destroy: destroyFn,
+            isDestroyed: false,
+            ...config,
+          };
+        },
+      ),
   };
 };
 

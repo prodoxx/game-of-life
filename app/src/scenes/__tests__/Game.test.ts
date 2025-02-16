@@ -9,7 +9,8 @@ import { PATTERNS } from "../../patterns";
 type Mock = ReturnType<typeof vi.fn>;
 
 // helper function to safely cast Rectangle to MockRectangle
-const asMockRectangle = (sprite: Phaser.GameObjects.Rectangle): MockRectangle => sprite as unknown as MockRectangle;
+const asMockRectangle = (sprite: Phaser.GameObjects.Rectangle): MockRectangle =>
+  sprite as unknown as MockRectangle;
 
 // mock document for pattern tests
 const mockDocument = {
@@ -21,11 +22,31 @@ describe("Game Scene", () => {
   let inputCallback: (pointer: MockPointerEvent, gameObject: MockRectangle) => void;
   let originalGridCols: number;
   let originalGridRows: number;
+  let mockStatusElement: { textContent?: string };
 
   beforeEach(() => {
     vi.clearAllMocks();
     originalGridCols = constants.GRID_COLS;
     originalGridRows = constants.GRID_ROWS;
+
+    // setup document mock
+    mockStatusElement = {};
+    vi.stubGlobal("document", {
+      getElementById: vi.fn((id: string) => {
+        if (id === "game-status") return mockStatusElement;
+        if (id === "pattern-selection") {
+          return {
+            querySelectorAll: vi.fn().mockReturnValue([
+              { getAttribute: () => "flower", addEventListener: vi.fn() },
+              { getAttribute: () => "blinker", addEventListener: vi.fn() },
+              { getAttribute: () => "glider", addEventListener: vi.fn() },
+            ]),
+          };
+        }
+        return null;
+      }),
+    });
+
     game = new Game();
     game.create();
 
@@ -35,6 +56,7 @@ describe("Game Scene", () => {
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.unstubAllGlobals();
     Object.defineProperty(constants, "GRID_COLS", { value: originalGridCols });
     Object.defineProperty(constants, "GRID_ROWS", { value: originalGridRows });
   });
@@ -63,9 +85,15 @@ describe("Game Scene", () => {
       expect(firstCell.x).toBe(constants.CELL_SIZE / 2);
       expect(firstCell.y).toBe(constants.CELL_SIZE / 2);
 
-      const lastCell = asMockRectangle(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite);
-      expect(lastCell.x).toBe((constants.GRID_COLS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2);
-      expect(lastCell.y).toBe((constants.GRID_ROWS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2);
+      const lastCell = asMockRectangle(
+        grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite,
+      );
+      expect(lastCell.x).toBe(
+        (constants.GRID_COLS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2,
+      );
+      expect(lastCell.y).toBe(
+        (constants.GRID_ROWS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2,
+      );
     });
 
     describe("Edge Cases", () => {
@@ -98,10 +126,14 @@ describe("Game Scene", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
       const cell = grid[0][0];
 
-      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(0, 0);
+      (
+        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
+      ).toggleCell(0, 0);
       expect(cell.isAlive).toBe(true);
 
-      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(0, 0);
+      (
+        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
+      ).toggleCell(0, 0);
       expect(cell.isAlive).toBe(false);
     });
 
@@ -110,18 +142,14 @@ describe("Game Scene", () => {
       const cell = grid[0][0];
 
       // Force alive should make cell alive regardless of current state
-      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(
-        0,
-        0,
-        true
-      );
+      (
+        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
+      ).toggleCell(0, 0, true);
       expect(cell.isAlive).toBe(true);
 
-      (game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }).toggleCell(
-        0,
-        0,
-        true
-      );
+      (
+        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
+      ).toggleCell(0, 0, true);
       expect(cell.isAlive).toBe(true);
     });
 
@@ -138,7 +166,9 @@ describe("Game Scene", () => {
 
     it("happy: should handle clicks on grid boundaries", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
-      const cornerCell = asMockRectangle(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite);
+      const cornerCell = asMockRectangle(
+        grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite,
+      );
 
       inputCallback({ x: 0, y: 0 }, cornerCell);
       expect(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].isAlive).toBe(true);
@@ -313,7 +343,10 @@ describe("Game Scene", () => {
         // set all cells alive
         for (let row = 0; row < constants.GRID_ROWS; row++) {
           for (let col = 0; col < constants.GRID_COLS; col++) {
-            (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(row, col);
+            (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(
+              row,
+              col,
+            );
           }
         }
 
@@ -338,6 +371,30 @@ describe("Game Scene", () => {
 
   describe("Game Controls", () => {
     describe("Happy Paths", () => {
+      it("happy: should update game status when starting generations", () => {
+        game.startGenerations();
+        expect(mockStatusElement.textContent).toBe("Running");
+      });
+
+      it("happy: should update game status when stopping generations", () => {
+        game.startGenerations();
+        game.stopGenerations();
+        expect(mockStatusElement.textContent).toBe("Stopped");
+      });
+
+      it("happy: should update game status when pausing generations", () => {
+        game.startGenerations();
+        game.pauseGenerations();
+        expect(mockStatusElement.textContent).toBe("Paused");
+      });
+
+      it("happy: should update game status when resuming generations", () => {
+        game.startGenerations();
+        game.pauseGenerations();
+        game.resumeGenerations();
+        expect(mockStatusElement.textContent).toBe("Running");
+      });
+
       it("happy: should start generations when not running", () => {
         expect(game["isRunning"]).toBe(false);
         game.startGenerations();
