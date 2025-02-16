@@ -9,7 +9,7 @@ import { apiService } from "./services/api";
 import { viewLoader } from "./services/viewLoader";
 import { socketService } from "./services/socketService";
 import type { AxiosError } from "axios";
-// @ts-ignore
+// @ts-expect-error
 import Toastify from "toastify-js";
 
 const ErrorMessageSchema = z.object({
