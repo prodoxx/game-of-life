@@ -16,7 +16,7 @@ export class MockRectangle implements MockRectangleProps {
   strokeStyle: { width: number; color: number } = { width: 0, color: 0 };
   data: Map<string, unknown> = new Map();
 
-  constructor(x: number, y: number, width: number, height: number, color: number) {
+  constructor(x: number, y: number, _width: number, _height: number, color: number) {
     this.x = x;
     this.y = y;
     this.fillStyle = color;
@@ -68,7 +68,7 @@ export class MockContainer {
   scale: number = 1;
   children: any[] = [];
 
-  constructor(scene: any, x: number = 0, y: number = 0) {
+  constructor(_scene: any, x: number = 0, y: number = 0) {
     this.x = x;
     this.y = y;
   }
