@@ -43,21 +43,51 @@ class GameRoomService {
   }
 
   async updateGameState(gameRoomId: string, grid: CellState[][]): Promise<GameState> {
-    const currentState = await this.getGameState(gameRoomId);
-    const newState: GameState = {
-      grid,
-      generation: (currentState?.generation ?? 0) + 1,
-      lastUpdated: new Date().toISOString(),
-    };
+    const stateKey = this.getGameStateKey(gameRoomId);
+    let retries = config.maxUpdateRetries;
 
-    await redisClient.set(this.getGameStateKey(gameRoomId), JSON.stringify(newState), {
-      EX: config.roomExpiration,
-    });
+    while (retries > 0) {
+      try {
+        // watch the key for changes
+        await redisClient.watch(stateKey);
 
-    return newState;
+        // get current state
+        const currentState = await this.getGameState(gameRoomId);
+        const newState: GameState = {
+          grid,
+          generation: (currentState?.generation ?? 0) + 1,
+          lastUpdated: new Date().toISOString(),
+        };
+
+        // start transaction
+        const multi = redisClient.multi();
+        multi.set(stateKey, JSON.stringify(newState), {
+          EX: config.roomExpiration,
+        });
+
+        // execute transaction
+        const results = await multi.exec();
+
+        if (!results) {
+          retries--;
+          continue;
+        }
+
+        return newState;
+      } catch (error) {
+        await redisClient.unwatch();
+        throw error;
+      }
+    }
+
+    throw new Error("Failed to update game state after maximum retries");
   }
 
-  async updatePlayerStatus(gameRoomId: string, playerId: string, status: PlayerStatus): Promise<GameRoomMetadata> {
+  async updatePlayerStatus(
+    gameRoomId: string,
+    playerId: string,
+    status: PlayerStatus,
+  ): Promise<GameRoomMetadata> {
     const gameRoom = await this.getGameRoom(gameRoomId);
     if (!gameRoom) {
       throw new Error("Game room not found");
@@ -74,7 +104,11 @@ class GameRoomService {
     return await this.saveGameRoom(gameRoomId, gameRoom);
   }
 
-  async joinGameRoom(gameRoomId: string, playerName: string, playerId: string): Promise<GameRoomMetadata> {
+  async joinGameRoom(
+    gameRoomId: string,
+    playerName: string,
+    playerId: string,
+  ): Promise<GameRoomMetadata> {
     const gameRoom = await this.getGameRoom(gameRoomId);
 
     if (!gameRoom) {
@@ -117,7 +151,10 @@ class GameRoomService {
     return await this.saveGameRoom(gameRoomId, gameRoom);
   }
 
-  private async saveGameRoom(gameRoomId: string, gameRoom: GameRoomMetadata): Promise<GameRoomMetadata> {
+  private async saveGameRoom(
+    gameRoomId: string,
+    gameRoom: GameRoomMetadata,
+  ): Promise<GameRoomMetadata> {
     gameRoom.lastActivity = new Date().toISOString();
     GameRoomMetadataSchema.parse(gameRoom);
     await redisClient.set(`gameRoom:${gameRoomId}`, JSON.stringify(gameRoom), {
@@ -155,7 +192,9 @@ class GameRoomService {
     }
 
     // check if all active players
-    const inactivePlayers = gameRoom.players.filter((p: PlayerWithStatus) => p.status === "inactive");
+    const inactivePlayers = gameRoom.players.filter(
+      (p: PlayerWithStatus) => p.status === "inactive",
+    );
     if (inactivePlayers.length > 0) {
       throw new Error("Cannot start game with inactive players");
     }

@@ -3,4 +3,5 @@ export const config = {
   playerColor: "#0000FF", // default blue color for host
   playerLimit: 5, // maximum number of players per game
   reconnectionTimeout: 10000, // 10 seconds to allow for reconnection
+  maxUpdateRetries: 3, // maximum number of retries for optimistic locking in game state updates
 };
