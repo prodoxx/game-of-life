@@ -212,7 +212,12 @@ export class Game extends Scene {
 
     this.input.on(
       "wheel",
-      (pointer: Phaser.Input.Pointer, _gameObjects: any, _deltaX: number, deltaY: number) => {
+      (
+        pointer: Phaser.Input.Pointer,
+        _gameObjects: Phaser.GameObjects.GameObject[],
+        _deltaX: number,
+        deltaY: number,
+      ) => {
         // use a smaller zoom factor for slower zooming
         const zoomFactor = deltaY > 0 ? 0.98 : 1.02;
         this.handleZoom(zoomFactor, pointer);
@@ -326,7 +331,7 @@ export class Game extends Scene {
     const row = this.grid.findIndex((r) => r.includes(cell));
     const col = this.grid[row].findIndex((c) => c === cell);
 
-    for (const [_direction, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
+    for (const [, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
       const neighborRow = row + rowOffset;
       const neighborCol = col + colOffset;
 
@@ -392,7 +397,7 @@ export class Game extends Scene {
   private countLiveNeighbors(row: number, col: number): number {
     let count = 0;
 
-    for (const [_direction, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
+    for (const [, [rowOffset, colOffset]] of NEIGHBOR_OFFSETS) {
       const neighborRow = row + rowOffset;
       const neighborCol = col + colOffset;
 

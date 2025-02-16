@@ -3,6 +3,5 @@
   "trailingComma": "all",
   "singleQuote": false,
   "printWidth": 100,
-  "tabWidth": 2,
-  "exclude": ["dist/**/*"]
+  "tabWidth": 2
 }
