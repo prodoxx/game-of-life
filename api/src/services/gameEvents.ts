@@ -188,7 +188,7 @@ export class GameEventsService {
             (p: PlayerWithStatus) => p.id === socket.data.userId,
           );
           if (player && player.status === "active") {
-            const newState = await gameRoomService.updateGameState(roomId, grid, player.id);
+            const newState = await gameRoomService.updateGameState(roomId, grid);
             // broadcast state update to all clients in the room
             this.io.to(roomId).emit("game:state-updated", {
               grid: newState.grid,
