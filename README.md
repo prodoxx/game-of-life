@@ -289,6 +289,9 @@ Traditional databases like PostgreSQL or MongoDB would add unnecessary complexit
 ## Deployment
 
 The easiest way for deployment is to use a service like [Railway](https://railway.app).
+Try it out:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/FN2JJN?referralCode=xcSIvP)
 
 ## License
 
