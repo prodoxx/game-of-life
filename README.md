@@ -8,6 +8,29 @@ One-click Deploy to Railway:
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/FN2JJN?referralCode=xcSIvP)
 
+## Table of Contents
+
+- [Game of Life](#game-of-life)
+  - [Table of Contents](#table-of-contents)
+  - [Technical Architecture](#technical-architecture)
+    - [State Management and Concurrency](#state-management-and-concurrency)
+      - [Current Implementation](#current-implementation)
+      - [Event Flow](#event-flow)
+      - [Game Metadata Persistence](#game-metadata-persistence)
+      - [Redis Persistence \& Reliability](#redis-persistence--reliability)
+      - [Why Redis Over Traditional Databases](#why-redis-over-traditional-databases)
+    - [Technical Choices](#technical-choices)
+    - [Trade-offs and Considerations](#trade-offs-and-considerations)
+  - [Assumptions Made](#assumptions-made)
+  - [Other projects](#other-projects)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+    - [Development](#development)
+  - [Testing](#testing)
+  - [Deployment](#deployment)
+  - [License](#license)
+
 ## Technical Architecture
 
 ![image](https://github.com/user-attachments/assets/5a3b1fab-e489-4060-9937-cd2196337202)
