@@ -46,6 +46,7 @@ class GameRoomService {
     gameRoomId: string,
     grid: CellState[][],
     reset: boolean = false,
+    generation?: number,
   ): Promise<GameState> {
     const stateKey = this.getGameStateKey(gameRoomId);
     let retries = config.maxUpdateRetries;
@@ -59,7 +60,7 @@ class GameRoomService {
         const currentState = await this.getGameState(gameRoomId);
         const newState: GameState = {
           grid,
-          generation: reset ? 0 : (currentState?.generation ?? 0) + 1,
+          generation: reset ? 0 : (generation ?? (currentState?.generation ?? 0) + 1),
           lastUpdated: new Date().toISOString(),
         };
 

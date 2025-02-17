@@ -21,6 +21,7 @@ export class Game extends Scene {
   private gridContainer!: Phaser.GameObjects.Container;
   private roomMetadata?: GameRoomMetadata;
   private currentPlayerId: string | undefined = undefined;
+  private generation: number = 0;
 
   constructor() {
     super("Game");
@@ -415,9 +416,14 @@ export class Game extends Scene {
     // update population count
     this.updatePopulationCount();
 
-    // emit grid update to other players
+    // emit grid update to other players without incrementing generation
     if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+      socketService.updateGameState(
+        this.roomMetadata.id,
+        this.getGridState(),
+        false,
+        this.generation,
+      );
     }
   }
 
@@ -440,6 +446,11 @@ export class Game extends Scene {
   }
 
   nextGeneration(): void {
+    if (this.isRunning && !this.isPaused) {
+      this.generation++;
+      this.updateGenerationCount(this.generation);
+    }
+
     // create a copy of the current state
     const nextState: { isAlive: boolean; ownerId?: string; color?: string }[][] = Array(GRID_ROWS)
       .fill(null)
@@ -487,7 +498,12 @@ export class Game extends Scene {
 
     // emit grid update to other players
     if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+      socketService.updateGameState(
+        this.roomMetadata.id,
+        this.getGridState(),
+        false,
+        this.generation,
+      );
     }
   }
 
@@ -531,7 +547,12 @@ export class Game extends Scene {
 
     // emit grid update to other players
     if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+      socketService.updateGameState(
+        this.roomMetadata.id,
+        this.getGridState(),
+        false,
+        this.generation,
+      );
     }
   }
 
@@ -550,6 +571,9 @@ export class Game extends Scene {
       }
     }
 
+    // reset generation counter
+    this.generation = 0;
+
     // update population count (this will set it to 0 since all cells are dead)
     this.updatePopulationCount();
 
@@ -558,7 +582,7 @@ export class Game extends Scene {
 
     // emit grid update to other players with reset generation
     if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState(), true);
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState(), true, 0);
     }
   }
 }
