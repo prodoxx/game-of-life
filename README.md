@@ -2,6 +2,8 @@
 
 A multiplayer implementation of Conway's Game of Life using Node.js, Socket.IO, Redis, and Phaser. This implementation focuses on real-time collaboration, state management, and scalability.
 
+Demo: https://app-production-3ffd.up.railway.app
+
 ## Technical Architecture
 
 The application is split into three main components:
@@ -93,20 +95,23 @@ The game implements Redis persistence and reconnection strategies for improved r
 1. **Persistence Configuration**
 
    ```
-   redis-server --appendonly yes --appendfsync everysec --save 1800 1
+    redis-server --save 3600 1 --save 300 100 --save 60 10000 --appendonly yes --appendfsync everysec
    ```
 
-   - Enables AOF (Append-Only File) persistence with trade-offs:
-     - Every write operation is logged to the AOF file
-     - `everysec` setting buffers writes and syncs every second
-     - Small chance of losing 1 second of data on server crash
-     - Better performance than `always` sync, more durable than `no` sync
-   - Additional RDB snapshot every 30 minutes if at least 1 change
-   - Low impact for our use case as:
-     - Data stored is minimal (room metadata and grid state)
-     - Each room has an expiration time
-     - Redis is primarily used as a temporary state holder
-     - Game can recover from brief state loss through client reconnection
+- Enables AOF (Append-Only File) persistence with trade-offs:
+  - Every write operation is logged to the AOF file
+  - `everysec` setting buffers writes and syncs every second
+  - Small chance of losing 1 second of data on server crash
+  - Better performance than `always` sync, more durable than `no` sync
+- RDB snapshots at multiple intervals:
+  - Every 60 minutes if at least 1 change
+  - Every 5 minutes if at least 100 changes
+  - Every 1 minute if at least 10000 changes
+- Low impact for our use case as:
+  - Data stored is minimal (room metadata and grid state)
+  - Each room has an expiration time
+  - Redis is primarily used as a temporary state holder
+  - Game can recover from brief state loss through client reconnection
 
 2. **Reconnection Strategy**
    - Exponential backoff with 50ms base delay
