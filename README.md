@@ -4,10 +4,13 @@ A multiplayer implementation of Conway's Game of Life using Node.js, Socket.IO, 
 
 Demo: https://app-production-3ffd.up.railway.app
 
+One-click Deploy to Railway:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/template/FN2JJN?referralCode=xcSIvP)
+
 ## Technical Architecture
 
 ![image](https://github.com/user-attachments/assets/5a3b1fab-e489-4060-9937-cd2196337202)
-
 
 The application is split into three main components:
 
