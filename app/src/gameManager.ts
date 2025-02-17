@@ -354,6 +354,11 @@ class GameManager {
     this.gameRoomMetadata = gameRoomMetadata;
     this.hideModal();
 
+    // show game UI elements
+    document.getElementById("stats-panel")?.classList.remove("hidden");
+    document.getElementById("game-controls")?.classList.remove("hidden");
+    document.getElementById("player-list")?.classList.remove("hidden");
+
     this.game.scene.start("Game", {
       roomMetadata: gameRoomMetadata,
       currentPlayerId: userIdentificationService.getId(),
