@@ -1,12 +1,11 @@
-import axios from "axios";
+import { templates, type TemplateName } from "../views/templates";
 
 /**
- * service for loading html view templates
+ * service for loading html templates
  */
 class ViewLoader {
-  public async loadView(viewName: string): Promise<string> {
-    const response = await axios.get<string>(`/src/views/${viewName}.html`);
-    return response.data;
+  public async loadView(viewName: TemplateName): Promise<string> {
+    return templates[viewName];
   }
 }
 
