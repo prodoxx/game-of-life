@@ -6,6 +6,13 @@ if (!process.env.REDIS_URL) {
 
 const redisClient = createClient({
   url: process.env.REDIS_URL,
+  socket: {
+    reconnectStrategy: (retries) => {
+      // exponential backoff with max delay of 3s
+      const delay = Math.min(retries * 50, 3000);
+      return delay;
+    },
+  },
 });
 
 redisClient.on("error", (err) => {
