@@ -296,6 +296,8 @@ An e-commerce platform for selling virtual debit cards, powered by a custom bank
 
 ### Development
 
+In both `/app` and `/api` you have access to these commands:
+
 - `pnpm dev` - Start development servers
 - `pnpm test` - Run tests
 - `pnpm build` - Build for production
@@ -303,7 +305,7 @@ An e-commerce platform for selling virtual debit cards, powered by a custom bank
 
 ## Testing
 
-- Unit tests with Vitest
+- Unit tests with Vitest were done for both app and api with a focus on `app` because of time.
 - Integration testing (missing because of time). **TODO later maybe.**
   - We could use Playwrite for E2E testing
   - Vitest for integration testing and since we have a docker-compose file already, we can easily spin up a Redis instance for testing and reuse the images to create test instances for testing.
