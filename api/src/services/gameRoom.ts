@@ -25,7 +25,6 @@ interface GameRoomWithStatus extends Omit<GameRoomMetadata, "players"> {
 
 class GameRoomService {
   private getGameStateKey(gameRoomId: string): string {
-    console.log("gameRoomId", gameRoomId);
     return `gameState:${gameRoomId}`;
   }
 
