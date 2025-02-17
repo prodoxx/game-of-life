@@ -14,10 +14,10 @@ export const GRID_COLS = Math.floor(GRID_WIDTH / CELL_SIZE);
 export const GRID_ROWS = Math.floor(GRID_HEIGHT / CELL_SIZE);
 
 // colors
-export const GRID_BORDER_COLOR = 0x999999; // gray
+export const GRID_BORDER_COLOR = 0x666666; // lighter gray for better visibility
 export const ALIVE_COLOR = 0x00ff00; // green
-export const DEAD_COLOR = 0x000000; // black
-export const BACKGROUND_COLOR = "#000000"; // black
+export const DEAD_COLOR = 0x111111; // very dark gray instead of pure black
+export const DEAD_CELL_OPACITY = 0.85; // opacity for dead cells
 
 export enum CellAction {
   SURVIVE = "SURVIVE",

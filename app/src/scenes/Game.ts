@@ -7,6 +7,9 @@ import {
   DEAD_COLOR,
   NEIGHBOR_OFFSETS,
   GENERATION_TICK_MS,
+  GRID_WIDTH,
+  GRID_HEIGHT,
+  DEAD_CELL_OPACITY,
 } from "../constants";
 import { Cell } from "../types";
 import { GameRoomMetadata, CellState } from "@game/shared";
@@ -34,11 +37,28 @@ export class Game extends Scene {
   }
 
   create() {
+    // create grid container
     this.gridContainer = this.add.container(0, 0);
+    const gridBackground = this.add.rectangle(0, 0, GRID_WIDTH, GRID_HEIGHT, 0x000000, 0.5);
+    this.gridContainer.add(gridBackground);
+
     this.createGrid();
     this.setupInteraction();
     this.setupSocketHandlers();
     this.updateGameStatus();
+
+    // update container position when game is resized
+    this.scale.on("resize", () => {
+      this.centerGridContainer();
+    });
+
+    this.centerGridContainer();
+  }
+
+  private centerGridContainer(): void {
+    const offsetX = (this.scale.width - GRID_WIDTH) / 2;
+    const offsetY = (this.scale.height - GRID_HEIGHT) / 2;
+    this.gridContainer.setPosition(offsetX, offsetY);
   }
 
   private setupSocketHandlers(): void {
@@ -80,16 +100,7 @@ export class Game extends Scene {
         cell.isAlive = cellState.isAlive;
         cell.ownerId = cellState.ownerId;
         cell.color = cellState.color;
-
-        if (cell.isAlive) {
-          if (cell.color) {
-            cell.sprite.setFillStyle(parseInt(cell.color.slice(1), 16));
-          } else if (cell.ownerId) {
-            cell.sprite.setFillStyle(this.getPlayerColor(cell.ownerId));
-          }
-        } else {
-          cell.sprite.setFillStyle(DEAD_COLOR);
-        }
+        this.updateCellVisuals(cell);
       }
     }
   }
@@ -284,6 +295,7 @@ export class Game extends Scene {
         cell.setStrokeStyle(1, GRID_BORDER_COLOR);
         cell.setOrigin(0.5);
         cell.setInteractive();
+        cell.setAlpha(DEAD_CELL_OPACITY);
 
         cell.setData("row", row);
         cell.setData("col", col);
@@ -295,6 +307,20 @@ export class Game extends Scene {
           sprite: cell,
         };
       }
+    }
+  }
+
+  private updateCellVisuals(cell: Cell): void {
+    if (cell.isAlive) {
+      cell.sprite.setAlpha(1);
+      if (cell.color) {
+        cell.sprite.setFillStyle(parseInt(cell.color.slice(1), 16));
+      } else if (cell.ownerId) {
+        cell.sprite.setFillStyle(this.getPlayerColor(cell.ownerId));
+      }
+    } else {
+      cell.sprite.setAlpha(DEAD_CELL_OPACITY);
+      cell.sprite.setFillStyle(DEAD_COLOR);
     }
   }
 
@@ -406,11 +432,11 @@ export class Game extends Scene {
       const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
       cell.ownerId = this.currentPlayerId;
       cell.color = player?.color;
-      cell.sprite.setFillStyle(this.getPlayerColor(this.currentPlayerId));
+      this.updateCellVisuals(cell);
     } else {
       cell.ownerId = undefined;
       cell.color = undefined;
-      cell.sprite.setFillStyle(DEAD_COLOR);
+      this.updateCellVisuals(cell);
     }
 
     // update population count
@@ -478,18 +504,7 @@ export class Game extends Scene {
         cell.isAlive = newState.isAlive;
         cell.ownerId = newState.ownerId;
         cell.color = newState.color;
-
-        // if it's a reproduction with a new color, use that color directly
-        if (newState.color) {
-          cell.sprite.setFillStyle(parseInt(newState.color.slice(1), 16));
-        } else if (cell.isAlive && cell.ownerId) {
-          const player = this.roomMetadata?.players.find((p) => p.id === cell.ownerId);
-          cell.color = player?.color;
-          cell.sprite.setFillStyle(this.getPlayerColor(cell.ownerId));
-        } else {
-          cell.color = undefined;
-          cell.sprite.setFillStyle(DEAD_COLOR);
-        }
+        this.updateCellVisuals(cell);
       }
     }
 

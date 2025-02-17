@@ -6,6 +6,11 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  background-image: url("/images/bg.gif");
+  background-repeat: repeat;
+  background-size: cover;
+  background-position: bottom center;
+  image-rendering: pixelated;
 }
 
 img,
