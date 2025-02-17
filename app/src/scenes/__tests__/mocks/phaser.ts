@@ -53,6 +53,10 @@ export class MockRectangle implements MockRectangleProps {
   getFillStyle(): number {
     return this.fillStyle;
   }
+
+  setAlpha(_alpha: number): this {
+    return this;
+  }
 }
 
 // mock Phaser Input Event
@@ -116,6 +120,7 @@ const mockScene = class MockScene {
   scale = {
     width: 800,
     height: 600,
+    on: vi.fn(),
   };
   cameras = {
     main: {
