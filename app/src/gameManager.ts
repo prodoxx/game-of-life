@@ -105,7 +105,15 @@ class GameManager {
       // setup socket event handlers before joining room
       this.setupSocketEventHandlers();
 
-      await socketService.joinRoom(this.gameRoomMetadata.id, currentPlayer.id, currentPlayer.name);
+      // join room and get latest room state
+      const latestRoomGameState = await socketService.joinRoom(
+        this.gameRoomMetadata.id,
+        currentPlayer.id,
+        currentPlayer.name,
+      );
+
+      // update local state with latest from server
+      this.gameRoomMetadata = latestRoomGameState;
 
       if (this.gameRoomMetadata.hasStarted) {
         this.startGame(this.gameRoomMetadata);
@@ -344,10 +352,12 @@ class GameManager {
     if (!this.gameRoomMetadata) return;
     this.gameRoomMetadata = gameRoomMetadata;
     this.hideModal();
+
     this.game.scene.start("Game", {
       roomMetadata: gameRoomMetadata,
       currentPlayerId: userIdentificationService.getId(),
     });
+
     this.updateGamePlayerList(gameRoomMetadata.players);
     this.showPatternSelection();
   }

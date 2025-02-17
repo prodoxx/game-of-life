@@ -122,6 +122,7 @@ export class GameEventsService {
 
         // emit current room state to the new joiner
         socket.emit("game:room-state", gameRoom);
+        socket.emit("game:state-updated", gameState);
 
         // notify others about the new/reconnected member
         this.io.to(roomId).emit("game:player-joined", {
