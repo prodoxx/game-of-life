@@ -42,7 +42,11 @@ class GameRoomService {
     return state ? JSON.parse(state) : null;
   }
 
-  async updateGameState(gameRoomId: string, grid: CellState[][]): Promise<GameState> {
+  async updateGameState(
+    gameRoomId: string,
+    grid: CellState[][],
+    reset: boolean = false,
+  ): Promise<GameState> {
     const stateKey = this.getGameStateKey(gameRoomId);
     let retries = config.maxUpdateRetries;
 
@@ -55,7 +59,7 @@ class GameRoomService {
         const currentState = await this.getGameState(gameRoomId);
         const newState: GameState = {
           grid,
-          generation: (currentState?.generation ?? 0) + 1,
+          generation: reset ? 0 : (currentState?.generation ?? 0) + 1,
           lastUpdated: new Date().toISOString(),
         };
 

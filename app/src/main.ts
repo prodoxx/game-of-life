@@ -27,7 +27,7 @@ const game = new Game(config);
 
 const gameManager = new GameManager(game);
 
-// handle window resizing
+// // handle window resizing
 window.addEventListener("resize", () => {
   game.scale.resize(window.innerWidth, window.innerHeight);
 });

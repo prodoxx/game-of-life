@@ -117,9 +117,9 @@ class SocketService {
     this.socket?.on("game:started", callback);
   }
 
-  public updateGameState(roomId: string, grid: CellState[][]): void {
+  public updateGameState(roomId: string, grid: CellState[][], reset: boolean = false): void {
     if (!this.socket) return;
-    this.socket.emit("game:update", { roomId, grid });
+    this.socket.emit("game:update", { roomId, grid, reset });
   }
 
   public onGameStateUpdated(

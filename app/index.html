@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -39,6 +39,24 @@
         </div>
       </div>
 
+      <!-- Stats Panel -->
+      <div
+        id="stats-panel"
+        class="fixed top-[12rem] right-8 -translate-y-1/2 bg-black/50 backdrop-blur-sm rounded-lg p-3 z-10"
+      >
+        <h2 class="text-white text-sm font-bold mb-2">Stats</h2>
+        <div class="space-y-2">
+          <div>
+            <span class="text-white text-sm font-bold">Generation: </span>
+            <span id="generation-count" class="text-white text-sm">0</span>
+          </div>
+          <div>
+            <span class="text-white text-sm font-bold">Population: </span>
+            <span id="population-count" class="text-white text-sm">0</span>
+          </div>
+        </div>
+      </div>
+
       <!-- Player List -->
       <div
         id="player-list"
@@ -49,7 +67,10 @@
       </div>
 
       <!-- Modal -->
-      <div id="modal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20">
+      <div
+        id="modal"
+        class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-20"
+      >
         <div class="bg-white rounded-xl p-4 max-w-md w-full mx-4 shadow-2xl">
           <div id="modal-content"></div>
         </div>

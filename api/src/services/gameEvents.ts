@@ -12,6 +12,7 @@ interface JoinRoomData {
 interface UpdateGridData {
   roomId: string;
   grid: CellState[][];
+  reset?: boolean;
 }
 
 export class GameEventsService {
@@ -181,7 +182,7 @@ export class GameEventsService {
     });
 
     // update game state
-    socket.on("game:update", async ({ roomId, grid }: UpdateGridData) => {
+    socket.on("game:update", async ({ roomId, grid, reset }: UpdateGridData) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
@@ -189,7 +190,7 @@ export class GameEventsService {
             (p: PlayerWithStatus) => p.id === socket.data.userId,
           );
           if (player) {
-            const newState = await gameRoomService.updateGameState(roomId, grid);
+            const newState = await gameRoomService.updateGameState(roomId, grid, reset);
             // broadcast state update to all clients in the room
             this.io.to(roomId).emit("game:state-updated", newState);
           }

@@ -44,7 +44,31 @@ export class Game extends Scene {
     // handle grid state updates from other players
     socketService.onGameStateUpdated((data) => {
       this.updateGridFromState(data.grid);
+      this.updateGenerationCount(data.generation);
+      this.updatePopulationCount();
     });
+  }
+
+  private updateGenerationCount(generation: number): void {
+    const generationElement = document.getElementById("generation-count");
+    if (generationElement) {
+      generationElement.textContent = generation.toString();
+    }
+  }
+
+  private updatePopulationCount(): void {
+    const populationElement = document.getElementById("population-count");
+    if (!populationElement) return;
+
+    let liveCount = 0;
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        if (this.grid[row][col].isAlive) {
+          liveCount++;
+        }
+      }
+    }
+    populationElement.textContent = liveCount.toString();
   }
 
   private updateGridFromState(gridState: CellState[][]): void {
@@ -388,6 +412,9 @@ export class Game extends Scene {
       cell.sprite.setFillStyle(DEAD_COLOR);
     }
 
+    // update population count
+    this.updatePopulationCount();
+
     // emit grid update to other players
     if (this.roomMetadata) {
       socketService.updateGameState(this.roomMetadata.id, this.getGridState());
@@ -455,6 +482,9 @@ export class Game extends Scene {
       }
     }
 
+    // update population count
+    this.updatePopulationCount();
+
     // emit grid update to other players
     if (this.roomMetadata) {
       socketService.updateGameState(this.roomMetadata.id, this.getGridState());
@@ -520,9 +550,15 @@ export class Game extends Scene {
       }
     }
 
-    // emit grid update to other players
+    // update population count (this will set it to 0 since all cells are dead)
+    this.updatePopulationCount();
+
+    // reset generation count display
+    this.updateGenerationCount(0);
+
+    // emit grid update to other players with reset generation
     if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState());
+      socketService.updateGameState(this.roomMetadata.id, this.getGridState(), true);
     }
   }
 }
