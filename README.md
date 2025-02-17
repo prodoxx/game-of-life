@@ -270,6 +270,7 @@ We made a few assumptions.
 5. The specs didn't say but we made the game rooms short lived. We set it to 24 hours in `api/src/config/config.ts` so it should automatically remove the room state and game state after that time. We did this because we just assumed the games won't be long and also to save resources especially since we are using redis.
 6. We used esbuild for the API because it's faster to build and also easier to configure with Typescript's ESM related config.
 7. Users can't join a room once the game as started. This is a typical design for most games I've seen. It simplifies things but its possible to allow this.
+8. This will only be a desktop game so time wasn't spent making it look good on smaller screens.
 
 ## Other projects
 
