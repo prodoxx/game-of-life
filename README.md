@@ -236,6 +236,28 @@ Traditional databases like PostgreSQL or MongoDB would add unnecessary complexit
      - Implement advanced state reconciliation
      - Add conflict resolution strategies
 
+## Assumptions Made
+
+We made a few assumptions.
+
+1. Typlically games like this have rooms and since rooms fits in perfectly with Socket.io. I went with this design. There is a 5 users per game that can be configured at `api/src/config/config.ts`. the grid is small so I figured we would want more than 5. We could have also allowed for panning and unlimited cells and with this allow a lot of users but we could do this later if we had time.
+2. Predefined pattern put by a user covers an alive cell. They don't go out of the grid container, though.
+3. We added a room link so the host can share it with others so other people can join. This wasn't in the spec but it made sense to me given that I play games often.
+4. We tag the user with a userId that we save in localStorage so if they disconnect and come back later, their color and state stayed the same and they can continue playing.
+5. The specs didn't say but we made the game rooms short lived. We set it to 24 hours in `api/src/config/config.ts` so it should automatically remove the room state and game state after that time. We did this because we just assumed the games won't be long and also to save resources especially since we are using redis.
+6. We used esbuild for the API because it's faster to build and also easier to configure with Typescript's ESM related config.
+7. Users can't join a room once the game as started. This is a typical design for most games I've seen. It simplifies things but its possible to allow this.
+
+## Other projects
+
+[MyQA](https://myqa.is)
+
+A personal side project: **MyQA** is a social Q&A platform that enables creators and influencers to monetize answers to questions from their followers and fans. Payments are processed via Stripe, with a blockchain-based payment version—powered by the **Decentralized Content Access Protocol (DCAP)**—planned for future release. I previously wrote an open-source Solana smart contract for an earlier version, available here: [Solana Smart Contract V1 for MyQA](https://github.com/prodoxx/myqa-is/blob/main/programs/myqa/src/lib.rs) _(deprecated)._
+
+[MyCredit](https://mycredit.bz)
+
+An e-commerce platform for selling virtual debit cards, powered by a custom bank payment layer I developed. Designed for countries with limited financial infrastructure, it processes payments via bank transfers. The system automatically detects incoming transfers and completes orders seamlessly.
+
 ## Getting Started
 
 ### Prerequisites
