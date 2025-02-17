@@ -11,6 +11,7 @@ import { socketService } from "./services/socketService";
 import type { AxiosError } from "axios";
 // @ts-expect-error - Toastify is not typed
 import Toastify from "toastify-js";
+import type { TemplateName } from "./views/templates";
 
 const ErrorMessageSchema = z.object({
   message: z.string(),
@@ -413,7 +414,7 @@ class GameManager {
     this.setupStartView();
   }
 
-  private async loadView(viewName: string): Promise<void> {
+  private async loadView(viewName: TemplateName): Promise<void> {
     try {
       const html = await viewLoader.loadView(viewName);
       if (this.modalContent) {
