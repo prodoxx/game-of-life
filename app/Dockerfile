@@ -25,7 +25,6 @@ CMD ["pnpm", "dev"]
 
 # build stage
 FROM base as build
-ENV NODE_ENV=production
 
 # Copy workspace files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./

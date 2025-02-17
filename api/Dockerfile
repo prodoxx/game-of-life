@@ -26,9 +26,7 @@ CMD ["pnpm", "dev"]
 
 # build stage
 FROM base as builder
-ENV NODE_ENV=production
-
-# Copy workspace files
+# Remove NODE_ENV=production to ensure dev dependencies are installed
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY shared/package.json ./shared/
 COPY api/package.json ./api/
