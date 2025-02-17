@@ -9,7 +9,7 @@ export const configureMiddleware = (app: express.Application) => {
     cors({
       origin: process.env.APP_BASE_URL,
       credentials: true,
-    })
+    }),
   );
 
   // helmet handles a lot of security related  issues

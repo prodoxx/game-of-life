@@ -16,7 +16,10 @@ interface JoinRoomRequest {
   playerId: string;
 }
 
-const createRoom = async (req: Request<{}, {}, CreateRoomRequest>, res: Response) => {
+const createRoom = async (
+  req: Request<Record<string, never>, Record<string, never>, CreateRoomRequest>,
+  res: Response,
+) => {
   try {
     const { hostName, hostId } = CreateGameRoomSchema.parse(req.body);
     const room = await gameRoomService.createGameRoom(hostName, hostId);
@@ -55,7 +58,10 @@ const getRoom = async (req: Request<RoomParams>, res: Response) => {
   }
 };
 
-const joinRoom = async (req: Request<RoomParams, {}, JoinRoomRequest>, res: Response) => {
+const joinRoom = async (
+  req: Request<RoomParams, Record<string, never>, JoinRoomRequest>,
+  res: Response,
+) => {
   try {
     const { roomId } = req.params;
     const { playerName, playerId } = req.body;
