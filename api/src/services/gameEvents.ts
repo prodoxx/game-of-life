@@ -188,20 +188,10 @@ export class GameEventsService {
           const player = gameRoom.players.find(
             (p: PlayerWithStatus) => p.id === socket.data.userId,
           );
-          if (player && player.status === "active") {
+          if (player) {
             const newState = await gameRoomService.updateGameState(roomId, grid);
             // broadcast state update to all clients in the room
-            this.io.to(roomId).emit("game:state-updated", {
-              grid: newState.grid,
-              userId: player.id,
-              name: player.name,
-              color: player.color,
-              status: player.status,
-              generation: newState.generation,
-              lastUpdated: newState.lastUpdated,
-            });
-          } else if (player && player.status === "inactive") {
-            socket.emit("game:error", { message: "Cannot update game state while inactive" });
+            this.io.to(roomId).emit("game:state-updated", newState);
           }
         }
       } catch (error) {
