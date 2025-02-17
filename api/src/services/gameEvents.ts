@@ -40,7 +40,9 @@ export class GameEventsService {
       if (roomId) {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
-          const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
           if (player) {
             // set player status to inactive
             await gameRoomService.updatePlayerStatus(roomId, player.id, PlayerStatus.Inactive);
@@ -64,10 +66,15 @@ export class GameEventsService {
             // set a timeout to remove the player if they don't reconnect
             const timeout = setTimeout(async () => {
               const currentRoom = await gameRoomService.getGameRoom(roomId);
-              const playerStillExists = currentRoom?.players.some((p: PlayerWithStatus) => p.id === player.id);
+              const playerStillExists = currentRoom?.players.some(
+                (p: PlayerWithStatus) => p.id === player.id,
+              );
 
               if (playerStillExists) {
-                const updatedRoom = await gameRoomService.removePlayerFromRoom(roomId, socket.data.userId);
+                const updatedRoom = await gameRoomService.removePlayerFromRoom(
+                  roomId,
+                  socket.data.userId,
+                );
                 this.io.to(roomId).emit("game:player-left", {
                   userId: player.id,
                   socketId: socket.id,
@@ -93,7 +100,7 @@ export class GameEventsService {
     socket.on("game:join", async ({ roomId, userId, name }: JoinRoomData) => {
       try {
         const gameRoom = await gameRoomService.joinGameRoom(roomId, name, userId);
-        socket.data.userId = userId; // store userId in socket data for disconnect handling
+        socket.data.userId = userId;
         socket.join(roomId);
 
         // clear any existing reconnection timeout
@@ -139,7 +146,9 @@ export class GameEventsService {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
-          const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
           if (player) {
             // Clear any existing reconnection timeout
             const timeoutKey = `${roomId}:${player.id}`;
@@ -149,7 +158,10 @@ export class GameEventsService {
               this.disconnectTimeouts.delete(timeoutKey);
             }
 
-            const updatedRoom = await gameRoomService.removePlayerFromRoom(roomId, socket.data.userId);
+            const updatedRoom = await gameRoomService.removePlayerFromRoom(
+              roomId,
+              socket.data.userId,
+            );
             socket.leave(roomId);
 
             this.io.to(roomId).emit("game:player-left", {
@@ -172,17 +184,20 @@ export class GameEventsService {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
-          const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
           if (player && player.status === "active") {
-            const gameState = await gameRoomService.updateGameState(roomId, grid);
+            const newState = await gameRoomService.updateGameState(roomId, grid, player.id);
+            // broadcast state update to all clients in the room
             this.io.to(roomId).emit("game:state-updated", {
-              grid,
+              grid: newState.grid,
               userId: player.id,
               name: player.name,
               color: player.color,
               status: player.status,
-              generation: gameState.generation,
-              lastUpdated: gameState.lastUpdated,
+              generation: newState.generation,
+              lastUpdated: newState.lastUpdated,
             });
           } else if (player && player.status === "inactive") {
             socket.emit("game:error", { message: "Cannot update game state while inactive" });
@@ -199,7 +214,9 @@ export class GameEventsService {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
-          const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
           if (player && player.isHost && player.status === "active") {
             const gameRoomMetadata = await gameRoomService.startGame(roomId);
             this.io.to(roomId).emit("game:started", gameRoomMetadata);
@@ -220,7 +237,9 @@ export class GameEventsService {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
-          const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
           if (player && player.isHost && player.status === "active") {
             await gameRoomService.pauseGame(roomId);
             this.io.to(roomId).emit("game:paused", {
