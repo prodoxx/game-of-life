@@ -6,6 +6,9 @@ Demo: https://app-production-3ffd.up.railway.app
 
 ## Technical Architecture
 
+![image](https://github.com/user-attachments/assets/5a3b1fab-e489-4060-9937-cd2196337202)
+
+
 The application is split into three main components:
 
 1. **Frontend (app/)**
