@@ -38,6 +38,11 @@ RUN pnpm install --frozen-lockfile
 COPY shared ./shared/
 COPY app ./app/
 
+# Build shared package first
+WORKDIR /app/shared
+RUN pnpm build
+
+# Then build app
 WORKDIR /app/app
 RUN pnpm build
 
