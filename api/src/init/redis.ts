@@ -1,10 +1,10 @@
-import { createClient } from "redis";
+import { createClient, RedisClientType } from "redis";
 
 if (!process.env.REDIS_URL) {
   throw new Error("redis url is not defined in environment variables");
 }
 
-const redisClient = createClient({
+const redisClient: RedisClientType = createClient({
   url: process.env.REDIS_URL,
   socket: {
     reconnectStrategy: (retries) => {
