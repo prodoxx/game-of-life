@@ -19,6 +19,10 @@ interface UpdateGridData {
 export class GameEventsService {
   // store timeouts for each player to handle reconnection
   private disconnectTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  // store pending updates for each room
+  private pendingUpdates: Map<string, { grid: CellState[][]; timestamp: number }[]> = new Map();
+  // store update timeouts for each room
+  private updateTimeouts: Map<string, NodeJS.Timeout> = new Map();
 
   constructor(private io: Server) {}
 
@@ -94,6 +98,35 @@ export class GameEventsService {
       }
     } catch (error) {
       console.error("Error handling disconnect:", error);
+    }
+  }
+
+  private async processUpdates(roomId: string): Promise<void> {
+    const updates = this.pendingUpdates.get(roomId);
+    if (!updates || updates.length === 0) return;
+
+    try {
+      const gameRoom = await gameRoomService.getGameRoom(roomId);
+      if (!gameRoom) return;
+
+      // sort updates by timestamp to ensure correct order
+      updates.sort((a, b) => a.timestamp - b.timestamp);
+
+      // apply all updates in sequence
+      let finalState = null;
+      for (const update of updates) {
+        finalState = await gameRoomService.updateGameState(roomId, update.grid);
+      }
+
+      if (finalState) {
+        // broadcast final consolidated state to all clients
+        this.io.to(roomId).emit("game:state-updated", finalState);
+      }
+    } catch (error) {
+      console.error("Error processing updates:", error);
+    } finally {
+      // clear pending updates
+      this.pendingUpdates.set(roomId, []);
     }
   }
 
@@ -186,16 +219,38 @@ export class GameEventsService {
     socket.on("game:update", async ({ roomId, grid, reset, generation }: UpdateGridData) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
-        if (gameRoom) {
-          const player = gameRoom.players.find(
-            (p: PlayerWithStatus) => p.id === socket.data.userId,
-          );
-          if (player) {
-            const newState = await gameRoomService.updateGameState(roomId, grid, reset, generation);
-            // broadcast state update to all clients in the room
-            this.io.to(roomId).emit("game:state-updated", newState);
-          }
+        if (!gameRoom) return;
+
+        const player = gameRoom.players.find((p: PlayerWithStatus) => p.id === socket.data.userId);
+        if (!player) return;
+
+        if (reset) {
+          const newState = await gameRoomService.updateGameState(roomId, grid, reset, generation);
+          this.io.to(roomId).emit("game:state-updated", newState);
+          return;
         }
+
+        if (!this.pendingUpdates.has(roomId)) {
+          this.pendingUpdates.set(roomId, []);
+        }
+        this.pendingUpdates.get(roomId)?.push({
+          grid,
+          timestamp: Date.now(),
+        });
+
+        // clear existing timeout
+        const existingTimeout = this.updateTimeouts.get(roomId);
+        if (existingTimeout) {
+          clearTimeout(existingTimeout);
+        }
+
+        // set new timeout to process updates
+        const timeout = setTimeout(() => {
+          this.processUpdates(roomId);
+          this.updateTimeouts.delete(roomId);
+        }, 50); // consolidate updates within 50ms window
+
+        this.updateTimeouts.set(roomId, timeout);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to update game state";
         socket.emit("game:error", { message });
