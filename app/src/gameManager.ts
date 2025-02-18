@@ -12,6 +12,7 @@ import type { AxiosError } from "axios";
 // @ts-expect-error - Toastify is not typed
 import Toastify from "toastify-js";
 import type { TemplateName } from "./views/templates";
+import { sanitizePlayerName, isValidPlayerName } from "@game/shared/utils/sanitize";
 
 const ErrorMessageSchema = z.object({
   message: z.string(),
@@ -184,18 +185,27 @@ class GameManager {
 
   private async handleJoinFormSubmit(roomId: string, playerName: string): Promise<void> {
     try {
+      const sanitizedName = sanitizePlayerName(playerName);
+
+      if (!isValidPlayerName(sanitizedName)) {
+        this.showError(
+          "Name must be between 1 and 20 characters and contain only letters, numbers, spaces, and hyphens",
+        );
+        return;
+      }
+
       this.showLoading(this.submitButton!, this.loadingSpinner!);
 
       // first join via HTTP to reserve spot
       this.gameRoomMetadata = await apiService.joinRoom(
         roomId,
-        playerName,
+        sanitizedName,
         userIdentificationService.getId(),
       );
 
       // then establish socket connection
       socketService.connect();
-      await socketService.joinRoom(roomId, userIdentificationService.getId(), playerName);
+      await socketService.joinRoom(roomId, userIdentificationService.getId(), sanitizedName);
 
       // setup socket event handlers before loading view
       this.setupSocketEventHandlers();
@@ -599,10 +609,13 @@ class GameManager {
     this.hideError();
 
     const formData = new FormData(event.target as HTMLFormElement);
-    this.hostName = formData.get("player-name")?.toString() ?? "";
+    const rawName = formData.get("player-name")?.toString() ?? "";
+    this.hostName = sanitizePlayerName(rawName);
 
-    if (!this.hostName) {
-      this.showError("Player name is required");
+    if (!isValidPlayerName(this.hostName)) {
+      this.showError(
+        "Name must be between 1 and 20 characters and contain only letters, numbers, spaces, and hyphens",
+      );
       return;
     }
 
