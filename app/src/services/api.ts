@@ -12,7 +12,6 @@ const api = axios.create({
 class ApiService {
   public async getRoomById(roomId: string): Promise<GameRoomMetadata> {
     const response = await api.get<{ data: GameRoomMetadata }>(`/v1/rooms/${roomId}`);
-    console.log(response.data);
     return response.data.data;
   }
 

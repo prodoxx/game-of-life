@@ -146,7 +146,6 @@ class SocketService {
     callback: (data: { grid: CellState[][]; generation: number; lastUpdated: string }) => void,
   ): void {
     this.socket?.on("game:state-updated", (data) => {
-      console.log("[Debug] Received game state update:", data);
       // clear pending updates as they've been confirmed
       this.pendingUpdates.clear();
       callback(data);
