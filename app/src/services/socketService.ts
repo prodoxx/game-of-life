@@ -1,13 +1,21 @@
 import { io, Socket } from "socket.io-client";
 import { config } from "../config";
-import type { GameRoomMetadata, CellState, GameStatus } from "@game/shared";
+import type { GameRoomMetadata, CellState, GameStatus, CellUpdate } from "@game/shared";
 
 class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
-
+  private pendingUpdates: Map<string, CellUpdate> = new Map();
+  private currentUserId?: string;
   constructor() {
     this.init();
+    if (typeof window !== "undefined") {
+      window.addEventListener("beforeunload", () => {
+        if (this.socket?.connected) {
+          this.socket.disconnect();
+        }
+      });
+    }
   }
 
   private init(): void {
@@ -26,17 +34,15 @@ class SocketService {
     if (!this.socket) return;
 
     this.socket.on("connect", () => {
-      console.log("socket connected");
       this.isConnected = true;
     });
 
     this.socket.on("disconnect", () => {
-      console.log("socket disconnected");
       this.isConnected = false;
     });
 
     this.socket.on("connect_error", (error) => {
-      console.error("connection error:", error);
+      console.error("Connection error:", error);
     });
   }
 
@@ -56,6 +62,8 @@ class SocketService {
         reject(new Error("Socket not initialized"));
         return;
       }
+
+      this.currentUserId = userId;
 
       // handle room state response
       this.socket.once("game:room-state", (state: GameRoomMetadata) => {
@@ -119,18 +127,30 @@ class SocketService {
 
   public updateGameState(
     roomId: string,
-    grid: CellState[][],
+    updates: CellUpdate[],
     reset: boolean = false,
     generation?: number,
   ): void {
     if (!this.socket) return;
-    this.socket.emit("game:update", { roomId, grid, reset, generation });
+
+    // store pending updates
+    for (const update of updates) {
+      const key = `${update.roomId}:${update.row}:${update.col}:${update.timestamp}`;
+      this.pendingUpdates.set(key, update);
+    }
+
+    this.socket.emit("game:update", { roomId, updates, reset, generation });
   }
 
   public onGameStateUpdated(
     callback: (data: { grid: CellState[][]; generation: number; lastUpdated: string }) => void,
   ): void {
-    this.socket?.on("game:state-updated", callback);
+    this.socket?.on("game:state-updated", (data) => {
+      console.log("[Debug] Received game state update:", data);
+      // clear pending updates as they've been confirmed
+      this.pendingUpdates.clear();
+      callback(data);
+    });
   }
 
   public updateGameStatus(roomId: string, status: GameStatus): void {
@@ -140,6 +160,39 @@ class SocketService {
 
   public onGameStatusUpdated(callback: (data: { status: GameStatus }) => void): void {
     this.socket?.on("game:status-updated", callback);
+  }
+
+  public getPendingUpdates(): CellUpdate[] {
+    return Array.from(this.pendingUpdates.values());
+  }
+
+  public onPlayerDisconnected(
+    callback: (data: {
+      userId: string;
+      socketId: string;
+      name: string;
+      color: string;
+      status: string;
+    }) => void,
+  ): void {
+    this.socket?.on("game:player-disconnected", callback);
+  }
+
+  public onPlayerReconnected(
+    callback: (data: {
+      userId: string;
+      socketId: string;
+      name: string;
+      color: string;
+      status: string;
+      isReconnected: boolean;
+    }) => void,
+  ): void {
+    this.socket?.on("game:player-joined", (data) => {
+      if (data.isReconnected) {
+        callback(data);
+      }
+    });
   }
 }
 

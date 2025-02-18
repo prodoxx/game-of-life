@@ -228,13 +228,12 @@ class GameManager {
 
       try {
         this.gameRoomMetadata = data;
+        this.updateGamePlayerList(this.gameRoomMetadata.players);
 
         const playersGridElement = document.getElementById("players-grid");
         if (playersGridElement) {
           this.updatePlayersGrid(playersGridElement, this.gameRoomMetadata.players);
         }
-
-        this.updateGamePlayerList(this.gameRoomMetadata.players);
       } catch (error) {
         console.error("Error updating room state:", error);
       }
@@ -242,7 +241,7 @@ class GameManager {
 
     // handle socket errors
     socketService.onError(({ message }) => {
-      Toastify.default({
+      Toastify({
         text: message,
         duration: 3000,
         close: true,
@@ -254,36 +253,61 @@ class GameManager {
       }).showToast();
     });
 
-    // handle player joined
+    // handle player joined/reconnected
     socketService.onPlayerJoined((data) => {
       if (!this.gameRoomMetadata) return;
 
+      const updatedPlayers = [...this.gameRoomMetadata.players];
+      const playerIndex = updatedPlayers.findIndex((p) => p.id === data.userId);
+
+      const newPlayerData: PlayerWithStatus = {
+        id: data.userId,
+        name: data.name,
+        color: data.color,
+        isHost: data.isHost,
+        status: PlayerStatus.Active,
+        lastStatusChange: data.lastStatusChange,
+      };
+
+      if (playerIndex === -1) {
+        updatedPlayers.push(newPlayerData);
+      } else {
+        updatedPlayers[playerIndex] = {
+          ...updatedPlayers[playerIndex],
+          ...newPlayerData,
+        };
+      }
+
+      this.gameRoomMetadata.players = updatedPlayers;
+      this.updateGamePlayerList(updatedPlayers);
+
       const playersGridElement = document.getElementById("players-grid");
       if (playersGridElement) {
-        const updatedPlayers = [...this.gameRoomMetadata.players];
-        const playerIndex = updatedPlayers.findIndex((p) => p.id === data.userId);
+        this.updatePlayersGrid(playersGridElement, updatedPlayers);
+      }
+    });
 
-        const newPlayerData: PlayerWithStatus = {
-          id: data.userId,
-          name: data.name,
-          color: data.color,
-          isHost: data.isHost,
-          status: data.status === "active" ? PlayerStatus.Active : PlayerStatus.Inactive,
-          lastStatusChange: data.lastStatusChange,
-        };
+    // handle player disconnected
+    socketService.onPlayerDisconnected((data) => {
+      if (!this.gameRoomMetadata) return;
 
-        if (playerIndex === -1) {
-          updatedPlayers.push(newPlayerData);
-        } else {
-          updatedPlayers[playerIndex] = {
-            ...updatedPlayers[playerIndex],
-            ...newPlayerData,
+      const updatedPlayers = this.gameRoomMetadata.players.map((player) => {
+        if (player.id === data.userId) {
+          return {
+            ...player,
+            status: PlayerStatus.Inactive,
+            lastStatusChange: new Date().toISOString(),
           };
         }
+        return player;
+      });
 
-        this.gameRoomMetadata.players = updatedPlayers;
+      this.gameRoomMetadata.players = updatedPlayers;
+      this.updateGamePlayerList(updatedPlayers);
+
+      const playersGridElement = document.getElementById("players-grid");
+      if (playersGridElement) {
         this.updatePlayersGrid(playersGridElement, updatedPlayers);
-        this.updateGamePlayerList(updatedPlayers);
       }
     });
 
@@ -291,12 +315,13 @@ class GameManager {
     socketService.onPlayerLeft((data) => {
       if (!this.gameRoomMetadata) return;
 
+      const updatedPlayers = this.gameRoomMetadata.players.filter((p) => p.id !== data.userId);
+      this.gameRoomMetadata.players = updatedPlayers;
+      this.updateGamePlayerList(updatedPlayers);
+
       const playersGridElement = document.getElementById("players-grid");
       if (playersGridElement) {
-        const updatedPlayers = this.gameRoomMetadata.players.filter((p) => p.id !== data.userId);
-        this.gameRoomMetadata.players = updatedPlayers;
         this.updatePlayersGrid(playersGridElement, updatedPlayers);
-        this.updateGamePlayerList(updatedPlayers);
       }
     });
 
@@ -323,28 +348,49 @@ class GameManager {
     // clear existing entries
     playerEntriesContainer.innerHTML = "";
 
+    const currentUserId = userIdentificationService.getId();
+
     // create and append player entries
     players.forEach((player) => {
       const playerElement = document.createElement("div");
-      playerElement.className = "player-entry";
+      playerElement.className = "player-entry flex items-center gap-2";
+      playerElement.dataset.playerId = player.id;
 
+      // player color indicator
       const colorIndicator = document.createElement("div");
-      colorIndicator.className = "player-color";
+      colorIndicator.className = "player-color w-2 h-2 rounded-full";
       colorIndicator.style.backgroundColor = player.color;
 
-      const nameElement = document.createElement("span");
-      nameElement.className = "player-name";
-      nameElement.textContent = player.name;
+      // name container with badges
+      const nameContainer = document.createElement("span");
+      nameContainer.className = "player-name flex-1 text-sm text-white/90 flex items-center gap-1";
+      nameContainer.textContent = player.name;
+
+      if (player.id === currentUserId) {
+        const youBadge = document.createElement("span");
+        youBadge.className =
+          "you-badge ml-1 px-1.5 py-0.5 text-xs font-medium bg-blue-500/20 text-blue-400 rounded";
+        youBadge.textContent = "You";
+        nameContainer.appendChild(youBadge);
+      }
 
       if (player.isHost) {
         const hostBadge = document.createElement("span");
-        hostBadge.className = "host-badge";
+        hostBadge.className =
+          "host-badge ml-1 px-1.5 py-0.5 text-xs font-medium bg-yellow-500/20 text-yellow-400 rounded";
         hostBadge.textContent = "Host";
-        nameElement.appendChild(hostBadge);
+        nameContainer.appendChild(hostBadge);
       }
 
+      // connection status indicator
+      const connectionStatus = document.createElement("div");
+      connectionStatus.className = `connection-status w-1.5 h-1.5 rounded-full transition-colors duration-200 ${
+        player.status === "active" ? "bg-emerald-500" : "bg-zinc-500"
+      }`;
+
       playerElement.appendChild(colorIndicator);
-      playerElement.appendChild(nameElement);
+      playerElement.appendChild(nameContainer);
+      playerElement.appendChild(connectionStatus);
       playerEntriesContainer.appendChild(playerElement);
     });
   }
@@ -365,6 +411,7 @@ class GameManager {
     document.getElementById("stats-panel")?.classList.remove("hidden");
     document.getElementById("game-controls")?.classList.remove("hidden");
     document.getElementById("player-list")?.classList.remove("hidden");
+    document.getElementById("keyboard-controls")?.classList.remove("hidden");
 
     this.updateGamePlayerList(gameRoomMetadata.players);
     this.showPatternSelection();
