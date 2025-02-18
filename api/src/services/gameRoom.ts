@@ -53,13 +53,23 @@ class GameRoomService {
 
     while (retries > 0) {
       try {
-        // watch the key for changes
         await redisClient.watch(stateKey);
 
         // get current state
         const currentState = await this.getGameState(gameRoomId);
+
+        // merge grids if there's an existing state and we're not resetting
+        let mergedGrid = grid;
+        if (
+          currentState &&
+          !reset &&
+          currentState.lastUpdated > new Date(Date.now() - 1000).toISOString()
+        ) {
+          mergedGrid = this.mergeGrids(currentState.grid, grid);
+        }
+
         const newState: GameState = {
-          grid,
+          grid: mergedGrid,
           generation: reset ? 0 : (generation ?? (currentState?.generation ?? 0) + 1),
           lastUpdated: new Date().toISOString(),
         };
@@ -86,6 +96,23 @@ class GameRoomService {
     }
 
     throw new Error("Failed to update game state after maximum retries");
+  }
+
+  private mergeGrids(grid1: CellState[][], grid2: CellState[][]): CellState[][] {
+    // create a new grid with the same dimensions
+    const mergedGrid: CellState[][] = grid1.map((row) => [...row]);
+
+    // merge changes from grid2 into the new grid
+    for (let i = 0; i < grid1.length; i++) {
+      for (let j = 0; j < grid1[i].length; j++) {
+        // if cell state is different in grid2, use the more recent change
+        if (grid2[i][j] !== grid1[i][j]) {
+          mergedGrid[i][j] = grid2[i][j];
+        }
+      }
+    }
+
+    return mergedGrid;
   }
 
   async updatePlayerStatus(
