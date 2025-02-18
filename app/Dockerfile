@@ -40,10 +40,13 @@ COPY app ./app/
 
 # Build shared package first
 WORKDIR /app/shared
+ENV VITE_API_URL=${VITE_API_URL}
+
 RUN pnpm build
 
 # Then build app
 WORKDIR /app/app
+
 RUN pnpm build
 
 # production stage
