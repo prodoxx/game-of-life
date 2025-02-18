@@ -185,6 +185,7 @@ describe("Game Scene", () => {
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),
         hasStarted: true,
+        gameStatus: "stopped",
         players: [
           {
             id: "player1",
@@ -370,6 +371,37 @@ describe("Game Scene", () => {
   });
 
   describe("Game Controls", () => {
+    beforeEach(() => {
+      // Set up room metadata with current player as host
+      game["roomMetadata"] = {
+        id: "test-room",
+        createdAt: new Date().toISOString(),
+        lastActivity: new Date().toISOString(),
+        hasStarted: true,
+        gameStatus: "stopped",
+        players: [
+          {
+            id: "test-player",
+            name: "Test Player",
+            color: "#FF0000",
+            status: PlayerStatus.Active,
+            isHost: true,
+            lastStatusChange: new Date().toISOString(),
+          },
+        ],
+      };
+      game["currentPlayerId"] = "test-player";
+
+      // Mock time.addEvent to return a proper timer object
+      game.time = {
+        addEvent: vi.fn().mockReturnValue({
+          delay: constants.GENERATION_TICK_MS,
+          destroy: vi.fn(),
+          paused: false,
+        }),
+      } as any;
+    });
+
     describe("Happy Paths", () => {
       it("happy: should update game status when starting generations", () => {
         game.startGenerations();
@@ -577,6 +609,7 @@ describe("Game Scene", () => {
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),
         hasStarted: true,
+        gameStatus: "stopped",
         players: [
           {
             id: "player1",
@@ -620,6 +653,7 @@ describe("Game Scene", () => {
               createdAt: new Date().toISOString(),
               lastActivity: new Date().toISOString(),
               hasStarted: true,
+              gameStatus: "stopped",
               players: [],
             };
             const color = (game as any).getPlayerColor("player1");
@@ -665,6 +699,7 @@ describe("Game Scene", () => {
         createdAt: new Date().toISOString(),
         lastActivity: new Date().toISOString(),
         hasStarted: true,
+        gameStatus: "stopped",
         players: [
           {
             id: "player1",

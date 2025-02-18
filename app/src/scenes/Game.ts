@@ -215,32 +215,41 @@ export class Game extends Scene {
   startGenerations(): void {
     if (!this.isHost()) return;
 
-    if (!this.isRunning) {
-      this.isRunning = true;
-      this.isPaused = false;
-      this.generationTimer = this.time.addEvent({
-        delay: GENERATION_TICK_MS,
-        callback: this.nextGeneration,
-        callbackScope: this,
-        loop: true,
-      });
-      this.updateGameStatus();
+    // don't start if already running
+    if (this.isRunning && !this.isPaused) return;
 
-      // emit game status update
-      if (this.roomMetadata) {
-        socketService.updateGameStatus(this.roomMetadata.id, "running");
-      }
+    // if paused, resume instead
+    if (this.isRunning && this.isPaused) {
+      this.resumeGenerations();
+      return;
+    }
+
+    this.isRunning = true;
+    this.isPaused = false;
+    this.generationTimer = this.time.addEvent({
+      delay: GENERATION_TICK_MS,
+      callback: this.nextGeneration,
+      callbackScope: this,
+      loop: true,
+    });
+    this.updateGameStatus();
+
+    // emit game status update
+    if (this.roomMetadata) {
+      socketService.updateGameStatus(this.roomMetadata.id, "running");
     }
   }
 
   stopGenerations(): void {
     if (!this.isHost()) return;
 
-    if (this.isRunning) {
+    if (this.isRunning || this.isPaused) {
       this.isRunning = false;
       this.isPaused = false;
-      this.generationTimer?.destroy();
-      this.generationTimer = undefined;
+      if (this.generationTimer) {
+        this.generationTimer.destroy();
+        this.generationTimer = undefined;
+      }
       this.updateGameStatus();
 
       // emit game status update
@@ -268,9 +277,11 @@ export class Game extends Scene {
   resumeGenerations(): void {
     if (!this.isHost()) return;
 
-    if (this.isRunning && this.isPaused && this.generationTimer) {
+    if (this.isRunning && this.isPaused) {
       this.isPaused = false;
-      this.generationTimer.paused = false;
+      if (this.generationTimer) {
+        this.generationTimer.paused = false;
+      }
       this.updateGameStatus();
 
       // emit game status update
@@ -283,10 +294,12 @@ export class Game extends Scene {
   toggleGenerations(): void {
     if (!this.isHost()) return;
 
-    if (this.isRunning) {
-      this.stopGenerations();
-    } else {
+    if (!this.isRunning) {
       this.startGenerations();
+    } else if (this.isPaused) {
+      this.resumeGenerations();
+    } else {
+      this.stopGenerations();
     }
   }
 
