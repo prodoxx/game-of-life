@@ -49,6 +49,9 @@ RUN pnpm build
 # production stage
 FROM node:20-slim as production
 
+ENV REDIS_URL=${REDIS_URL}
+ENV APP_BASE_URL=${APP_BASE_URL}
+
 RUN npm install -g pnpm@8.15.8
 
 WORKDIR /app
