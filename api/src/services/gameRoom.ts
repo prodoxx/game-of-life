@@ -11,6 +11,8 @@ import {
   PlayerWithStatusSchema,
   GameState,
   CellState,
+  GRID_ROWS,
+  GRID_COLS,
 } from "@game/shared";
 import { getRandomUnusedColor } from "@game/shared";
 import { z } from "zod";
@@ -54,31 +56,34 @@ class GameRoomService {
     while (retries > 0) {
       try {
         await redisClient.watch(stateKey);
-
-        // get current state
         const currentState = await this.getGameState(gameRoomId);
 
-        // merge grids if there's an existing state and we're not resetting
         let mergedGrid = grid;
         if (currentState && !reset) {
           mergedGrid = this.mergeGrids(currentState.grid, grid);
         }
 
+        let nextGeneration: number;
+        if (reset) {
+          nextGeneration = 0;
+        } else if (generation !== undefined) {
+          nextGeneration = generation;
+        } else {
+          nextGeneration = currentState?.generation ?? 0;
+        }
+
         const newState: GameState = {
           grid: mergedGrid,
-          generation: reset ? 0 : (generation ?? (currentState?.generation ?? 0) + 1),
+          generation: nextGeneration,
           lastUpdated: new Date().toISOString(),
         };
 
-        // start transaction
         const multi = redisClient.multi();
         multi.set(stateKey, JSON.stringify(newState), {
           EX: config.roomExpiration,
         });
 
-        // execute transaction
         const results = await multi.exec();
-
         if (!results) {
           retries--;
           continue;
@@ -95,13 +100,10 @@ class GameRoomService {
   }
 
   private mergeGrids(grid1: CellState[][], grid2: CellState[][]): CellState[][] {
-    // create a new grid with the same dimensions
     const mergedGrid: CellState[][] = grid1.map((row) => [...row]);
 
-    // merge changes from grid2 into the new grid
     for (let i = 0; i < grid1.length; i++) {
       for (let j = 0; j < grid1[i].length; j++) {
-        // if cell state is different in grid2, use the more recent change
         if (grid2[i][j] !== grid1[i][j]) {
           mergedGrid[i][j] = grid2[i][j];
         }
@@ -143,10 +145,8 @@ class GameRoomService {
       throw new Error("Game room not found");
     }
 
-    // check if player is already in the game
     const existingPlayer = gameRoom.players.find((p: PlayerWithStatus) => p.id === playerId);
     if (existingPlayer) {
-      // update player's status and name if needed
       if (existingPlayer.name !== playerName || existingPlayer.status !== PlayerStatus.Active) {
         existingPlayer.name = playerName;
         existingPlayer.status = PlayerStatus.Active;
@@ -156,16 +156,13 @@ class GameRoomService {
       return gameRoom;
     }
 
-    // check if game is at capacity
     if (gameRoom.players.length >= config.playerLimit) {
       throw new Error("Game room is full");
     }
 
-    // get used colors and assign a new random color
     const usedColors = gameRoom.players.map((p: Player) => p.color);
     const newColor = getRandomUnusedColor(usedColors);
 
-    // add new player
     const newPlayer: PlayerWithStatus = {
       id: playerId,
       name: playerName,
@@ -202,7 +199,6 @@ class GameRoomService {
       return gameRoom;
     }
 
-    // if host is leaving and there are other players, assign new host
     const isHost = gameRoom.players[playerIndex].isHost;
     gameRoom.players.splice(playerIndex, 1);
 
@@ -219,13 +215,34 @@ class GameRoomService {
       throw new Error("Game room not found");
     }
 
-    // check if all active players
     const inactivePlayers = gameRoom.players.filter(
       (p: PlayerWithStatus) => p.status === "inactive",
     );
     if (inactivePlayers.length > 0) {
       throw new Error("Cannot start game with inactive players");
     }
+
+    // initialize empty game state
+    const emptyGrid = Array(GRID_ROWS)
+      .fill(null)
+      .map(() =>
+        Array(GRID_COLS).fill({
+          isAlive: false,
+          ownerId: undefined,
+          color: undefined,
+        }),
+      );
+
+    const initialState: GameState = {
+      grid: emptyGrid,
+      generation: 0,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    // save initial game state
+    await redisClient.set(this.getGameStateKey(gameRoomId), JSON.stringify(initialState), {
+      EX: config.roomExpiration,
+    });
 
     gameRoom.hasStarted = true;
     return await this.saveGameRoom(gameRoomId, gameRoom);
@@ -242,7 +259,6 @@ class GameRoomService {
   }
 
   async createGameRoom(hostName: string, hostId: string): Promise<GameRoomMetadata> {
-    // validate inputs using zod schema
     const validatedData = CreateGameRoomSchema.parse({ hostName, hostId });
 
     const gameRoomId = createId();
