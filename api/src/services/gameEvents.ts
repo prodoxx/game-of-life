@@ -1,5 +1,12 @@
 import { Server, Socket } from "socket.io";
-import { PlayerWithStatus, PlayerStatus, CellState } from "@game/shared";
+import {
+  PlayerWithStatus,
+  PlayerStatus,
+  CellUpdate,
+  GameStatus,
+  GRID_ROWS,
+  GRID_COLS,
+} from "@game/shared";
 import { gameRoomService } from "./gameRoom";
 import { config } from "@/config/config";
 
@@ -11,7 +18,7 @@ interface JoinRoomData {
 
 interface UpdateGridData {
   roomId: string;
-  grid: CellState[][];
+  updates: CellUpdate[];
   reset?: boolean;
   generation?: number;
 }
@@ -19,10 +26,10 @@ interface UpdateGridData {
 export class GameEventsService {
   // store timeouts for each player to handle reconnection
   private disconnectTimeouts: Map<string, NodeJS.Timeout> = new Map();
-  // store pending updates for each room
-  private pendingUpdates: Map<string, { grid: CellState[][]; timestamp: number }[]> = new Map();
-  // store update timeouts for each room
+  // store pending updates for each room with timestamps
+  private pendingUpdates: Map<string, { updates: CellUpdate[]; timestamp: number }[]> = new Map();
   private updateTimeouts: Map<string, NodeJS.Timeout> = new Map();
+  private readonly BATCH_DELAY = 50; // ms to wait before processing updates
 
   constructor(private io: Server) {}
 
@@ -42,7 +49,7 @@ export class GameEventsService {
 
   private async handleDisconnect(socket: Socket): Promise<void> {
     try {
-      const roomId = Array.from(socket.rooms)[1]; // first room is socket's own room
+      const roomId = socket.data.roomId;
       if (roomId) {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (gameRoom) {
@@ -50,10 +57,8 @@ export class GameEventsService {
             (p: PlayerWithStatus) => p.id === socket.data.userId,
           );
           if (player) {
-            // set player status to inactive
             await gameRoomService.updatePlayerStatus(roomId, player.id, PlayerStatus.Inactive);
 
-            // note: we don't remove the player immediately on disconnect to allow for reconnection
             this.io.to(roomId).emit("game:player-disconnected", {
               userId: player.id,
               socketId: socket.id,
@@ -112,14 +117,45 @@ export class GameEventsService {
       // sort updates by timestamp to ensure correct order
       updates.sort((a, b) => a.timestamp - b.timestamp);
 
-      // apply all updates in sequence
-      let finalState = null;
-      for (const update of updates) {
-        finalState = await gameRoomService.updateGameState(roomId, update.grid);
+      // get current state
+      const currentState = await gameRoomService.getGameState(roomId);
+      if (!currentState) return;
+
+      // apply all updates in sequence to the grid
+      const newGrid = currentState.grid.map((row) => [...row]);
+      let latestGeneration = currentState.generation;
+
+      // track if we have any heartbeat updates
+      let hasHeartbeat = false;
+
+      for (const batch of updates) {
+        for (const update of batch.updates) {
+          if (update.isHeartbeat) {
+            hasHeartbeat = true;
+            // only update generation for heartbeat updates (game progression)
+            if (update.generation > latestGeneration) {
+              latestGeneration = update.generation;
+            }
+          }
+
+          // only apply grid updates for non-heartbeat updates
+          if (!update.isHeartbeat) {
+            newGrid[update.row][update.col] = update.state;
+          }
+        }
       }
 
+      // only increment generation if we have heartbeat updates (game progression)
+      const nextGeneration = hasHeartbeat ? latestGeneration : currentState.generation;
+
+      // update the game state with all changes at once
+      const finalState = await gameRoomService.updateGameState(
+        roomId,
+        newGrid,
+        false,
+        nextGeneration,
+      );
       if (finalState) {
-        // broadcast final consolidated state to all clients
         this.io.to(roomId).emit("game:state-updated", finalState);
       }
     } catch (error) {
@@ -130,12 +166,37 @@ export class GameEventsService {
     }
   }
 
+  private queueUpdates(roomId: string, updates: CellUpdate[]): void {
+    const roomUpdates = this.pendingUpdates.get(roomId) || [];
+
+    roomUpdates.push({
+      updates,
+      timestamp: Date.now(),
+    });
+
+    this.pendingUpdates.set(roomId, roomUpdates);
+
+    const existingTimeout = this.updateTimeouts.get(roomId);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // process updates
+    const timeout = setTimeout(() => {
+      this.processUpdates(roomId);
+      this.updateTimeouts.delete(roomId);
+    }, this.BATCH_DELAY);
+
+    this.updateTimeouts.set(roomId, timeout);
+  }
+
   private setupEventHandlers(socket: Socket): void {
     // join / re-join a game room
     socket.on("game:join", async ({ roomId, userId, name }: JoinRoomData) => {
       try {
         const gameRoom = await gameRoomService.joinGameRoom(roomId, name, userId);
         socket.data.userId = userId;
+        socket.data.roomId = roomId;
         socket.join(roomId);
 
         // clear any existing reconnection timeout
@@ -177,7 +238,55 @@ export class GameEventsService {
       }
     });
 
-    // leave a game room
+    socket.on(
+      "game:status-update",
+      async ({ roomId, status }: { roomId: string; status: "running" | "paused" | "stopped" }) => {
+        try {
+          const gameRoom = await gameRoomService.getGameRoom(roomId);
+          if (!gameRoom) {
+            throw new Error("Game room not found");
+          }
+
+          const player = gameRoom.players.find(
+            (p: PlayerWithStatus) => p.id === socket.data.userId,
+          );
+          if (!player) {
+            throw new Error("Player not found");
+          }
+
+          if (!player.isHost) {
+            throw new Error("Only host can update game status");
+          }
+
+          if (player.status === PlayerStatus.Inactive) {
+            throw new Error("Cannot update game status while inactive");
+          }
+
+          // update game status based on the requested status
+          switch (status) {
+            case GameStatus.Enum.running:
+              if (!gameRoom.hasStarted) {
+                await gameRoomService.startGame(roomId);
+              }
+              break;
+            case GameStatus.Enum.stopped:
+              await gameRoomService.pauseGame(roomId);
+              break;
+            case GameStatus.Enum.paused:
+              // game remains started but is paused
+              break;
+          }
+
+          // emit the status update to all clients in the room
+          this.io.to(roomId).emit("game:status-updated", { status });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Failed to update game status";
+          socket.emit("game:error", { message });
+        }
+      },
+    );
+
+    // TODO: add feature in the UI in the future to allow players to leave the game
     socket.on("game:leave", async ({ roomId }: { roomId: string }) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
@@ -186,7 +295,7 @@ export class GameEventsService {
             (p: PlayerWithStatus) => p.id === socket.data.userId,
           );
           if (player) {
-            // Clear any existing reconnection timeout
+            // clear any existing reconnection timeout
             const timeoutKey = `${roomId}:${player.id}`;
             const existingTimeout = this.disconnectTimeouts.get(timeoutKey);
             if (existingTimeout) {
@@ -198,6 +307,7 @@ export class GameEventsService {
               roomId,
               socket.data.userId,
             );
+            socket.data.roomId = undefined;
             socket.leave(roomId);
 
             this.io.to(roomId).emit("game:player-left", {
@@ -215,8 +325,7 @@ export class GameEventsService {
       }
     });
 
-    // update game state
-    socket.on("game:update", async ({ roomId, grid, reset, generation }: UpdateGridData) => {
+    socket.on("game:update", async ({ roomId, updates, reset }: UpdateGridData) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
         if (!gameRoom) return;
@@ -225,39 +334,29 @@ export class GameEventsService {
         if (!player) return;
 
         if (reset) {
-          const newState = await gameRoomService.updateGameState(roomId, grid, reset, generation);
+          // handle reset separately since it's a special case
+          const emptyGrid = Array(GRID_ROWS)
+            .fill(null)
+            .map(() =>
+              Array(GRID_COLS).fill({
+                isAlive: false,
+                ownerId: undefined,
+                color: undefined,
+              }),
+            );
+          const newState = await gameRoomService.updateGameState(roomId, emptyGrid, true, 0);
           this.io.to(roomId).emit("game:state-updated", newState);
           return;
         }
 
-        if (!this.pendingUpdates.has(roomId)) {
-          this.pendingUpdates.set(roomId, []);
-        }
-        this.pendingUpdates.get(roomId)?.push({
-          grid,
-          timestamp: Date.now(),
-        });
-
-        // clear existing timeout
-        const existingTimeout = this.updateTimeouts.get(roomId);
-        if (existingTimeout) {
-          clearTimeout(existingTimeout);
-        }
-
-        // set new timeout to process updates
-        const timeout = setTimeout(() => {
-          this.processUpdates(roomId);
-          this.updateTimeouts.delete(roomId);
-        }, 50); // consolidate updates within 50ms window
-
-        this.updateTimeouts.set(roomId, timeout);
+        // queue all updates for batch processing
+        this.queueUpdates(roomId, updates);
       } catch (error) {
         const message = error instanceof Error ? error.message : "Failed to update game state";
         socket.emit("game:error", { message });
       }
     });
 
-    // start game
     socket.on("game:start", async ({ roomId }: { roomId: string }) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
@@ -280,7 +379,6 @@ export class GameEventsService {
       }
     });
 
-    // pause game
     socket.on("game:pause", async ({ roomId }: { roomId: string }) => {
       try {
         const gameRoom = await gameRoomService.getGameRoom(roomId);
@@ -290,16 +388,23 @@ export class GameEventsService {
           );
           if (player && player.isHost && player.status === "active") {
             await gameRoomService.pauseGame(roomId);
+
             this.io.to(roomId).emit("game:paused", {
               userId: player.id,
               name: player.name,
               color: player.color,
               status: player.status,
             });
-          } else if (player && !player.isHost) {
+            return;
+          }
+          if (player && !player.isHost) {
             socket.emit("game:error", { message: "Only host can pause the game" });
-          } else if (player && player.status === "inactive") {
+            return;
+          }
+
+          if (player && player.status === PlayerStatus.Inactive) {
             socket.emit("game:error", { message: "Cannot pause game while inactive" });
+            return;
           }
         }
       } catch (error) {
