@@ -548,17 +548,28 @@ export class Game extends Scene {
     const centerRow = Math.floor(Math.random() * (validEndRow - validStartRow)) + validStartRow;
     const centerCol = Math.floor(Math.random() * (validEndCol - validStartCol)) + validStartCol;
 
-    // place pattern cells
+    // batch update all cells in the pattern
     pattern.cells.forEach(([rowOffset, colOffset]) => {
       const row = centerRow + rowOffset;
       const col = centerCol + colOffset;
 
       // ensure we're within grid bounds
       if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
-        // pattern cells take precedence over existing live cells
-        this.toggleCell(row, col, true);
+        const cell = this.grid[row][col];
+        cell.isAlive = true;
+
+        if (this.currentPlayerId) {
+          const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
+          cell.ownerId = this.currentPlayerId;
+          cell.color = player?.color;
+        }
+
+        this.updateCellVisuals(cell);
       }
     });
+
+    // update population count once after all cells are placed
+    this.updatePopulationCount();
 
     // emit grid update to other players
     if (this.roomMetadata) {
