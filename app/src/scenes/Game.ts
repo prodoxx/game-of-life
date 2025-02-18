@@ -12,7 +12,7 @@ import {
   DEAD_CELL_OPACITY,
 } from "../constants";
 import { Cell } from "../types";
-import { GameRoomMetadata, CellState } from "@game/shared";
+import { GameRoomMetadata, CellState, CellUpdate } from "@game/shared";
 import { socketService } from "../services/socketService";
 import { PATTERNS, Pattern } from "../patterns";
 
@@ -39,8 +39,6 @@ export class Game extends Scene {
   create() {
     // create grid container
     this.gridContainer = this.add.container(0, 0);
-    const gridBackground = this.add.rectangle(0, 0, GRID_WIDTH, GRID_HEIGHT, 0x000000, 0.5);
-    this.gridContainer.add(gridBackground);
 
     this.createGrid();
     this.setupInteraction();
@@ -65,23 +63,58 @@ export class Game extends Scene {
     // handle grid state updates from other players
     socketService.onGameStateUpdated((data) => {
       this.updateGridFromState(data.grid);
-      this.updateGenerationCount(data.generation);
+
+      // for non-host players, always use server's generation
+      if (!this.isHost()) {
+        this.generation = data.generation;
+        this.updateGenerationCount(this.generation);
+      }
+      // for host, only update generation on initial load or when stopped
+      else if (!this.isRunning) {
+        this.generation = data.generation;
+        this.updateGenerationCount(this.generation);
+      }
+
+      // always update population count since it depends on the grid state
       this.updatePopulationCount();
     });
 
     // handle game status updates
     socketService.onGameStatusUpdated(({ status }) => {
+      console.log("[Debug] Game status update received:", status);
+
       switch (status) {
         case "running":
-          if (!this.isRunning) this.startGenerations();
+          this.isRunning = true;
+          this.isPaused = false;
+          if (!this.generationTimer) {
+            this.generationTimer = this.time.addEvent({
+              delay: GENERATION_TICK_MS,
+              callback: this.nextGeneration,
+              callbackScope: this,
+              loop: true,
+            });
+          } else {
+            this.generationTimer.paused = false;
+          }
           break;
         case "paused":
-          if (this.isRunning && !this.isPaused) this.pauseGenerations();
+          this.isRunning = true;
+          this.isPaused = true;
+          if (this.generationTimer) {
+            this.generationTimer.paused = true;
+          }
           break;
         case "stopped":
-          if (this.isRunning) this.stopGenerations();
+          this.isRunning = false;
+          this.isPaused = false;
+          if (this.generationTimer) {
+            this.generationTimer.destroy();
+            this.generationTimer = undefined;
+          }
           break;
       }
+      this.updateGameStatus();
     });
   }
 
@@ -108,6 +141,7 @@ export class Game extends Scene {
   }
 
   private updateGridFromState(gridState: CellState[][]): void {
+    // apply server state
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const cellState = gridState[row][col];
@@ -118,16 +152,16 @@ export class Game extends Scene {
         this.updateCellVisuals(cell);
       }
     }
-  }
 
-  private getGridState(): CellState[][] {
-    return this.grid.map((row) =>
-      row.map((cell) => ({
-        isAlive: cell.isAlive,
-        ownerId: cell.ownerId,
-        color: cell.color,
-      })),
-    );
+    // reapply any pending updates
+    const pendingUpdates = socketService.getPendingUpdates();
+    for (const update of pendingUpdates) {
+      const cell = this.grid[update.row][update.col];
+      cell.isAlive = update.state.isAlive;
+      cell.ownerId = update.state.ownerId;
+      cell.color = update.state.color;
+      this.updateCellVisuals(cell);
+    }
   }
 
   private setupGenerationKeyboardControls(): void {
@@ -139,34 +173,45 @@ export class Game extends Scene {
 
     // prevent default browser behavior for game controls
     window.addEventListener("keydown", (e) => {
-      if (e.code === "Space" || e.code === "Escape" || e.code === "KeyR") {
+      if (
+        e.code === "Space" ||
+        e.code === "Escape" ||
+        (e.code === "KeyR" && !e.metaKey && !e.ctrlKey)
+      ) {
         e.preventDefault();
       }
     });
 
     // space to play/pause
     keyboard.on("keydown-SPACE", () => {
+      if (!this.roomMetadata) return;
+
       if (this.isRunning && this.isPaused) {
-        this.resumeGenerations();
+        // resume
+        socketService.updateGameStatus(this.roomMetadata.id, "running");
       } else if (this.isRunning && !this.isPaused) {
-        this.pauseGenerations();
+        // pause
+        socketService.updateGameStatus(this.roomMetadata.id, "paused");
       } else {
-        this.startGenerations();
+        // start
+        socketService.updateGameStatus(this.roomMetadata.id, "running");
       }
     });
 
     // esc to stop
     keyboard.on("keydown-ESC", () => {
-      this.stopGenerations();
+      if (!this.roomMetadata) return;
+      socketService.updateGameStatus(this.roomMetadata.id, "stopped");
     });
 
     // r to reset
-    keyboard.on("keydown-R", () => {
+    keyboard.on("keydown-R", (event: KeyboardEvent) => {
+      if (event.metaKey || event.ctrlKey) return;
       this.resetGrid();
     });
   }
 
-  // for convenience
+  // for convenience (can zoom into where the mouse is pointing in the grid)
   private handleZoom(scaleDelta: number, pointer: Phaser.Input.Pointer): void {
     // prevent zooming out beyond initial scale (1)
     if (scaleDelta < 1 && this.gridContainer.scale <= 1) {
@@ -197,13 +242,26 @@ export class Game extends Scene {
 
   private updateGameStatus(): void {
     const statusElement = document.getElementById("game-status");
-    if (!statusElement) return;
+    const statusIndicator = document.getElementById("status-indicator");
+    if (!statusElement || !statusIndicator) return;
 
     let status = "Stopped";
+    let indicatorColor = "bg-red-500";
+
     if (this.isRunning) {
-      status = this.isPaused ? "Paused" : "Running";
+      if (this.isPaused) {
+        status = "Paused";
+        indicatorColor = "bg-yellow-500";
+      } else {
+        status = "Running";
+        indicatorColor = "bg-emerald-500";
+      }
     }
+
     statusElement.textContent = status;
+    statusIndicator.className = `w-2 h-2 rounded-full ${indicatorColor}`;
+
+    console.log("[Debug] Game status updated:", status);
   }
 
   private isHost(): boolean {
@@ -213,93 +271,72 @@ export class Game extends Scene {
   }
 
   startGenerations(): void {
-    if (!this.isHost()) return;
-
-    // don't start if already running
-    if (this.isRunning && !this.isPaused) return;
-
-    // if paused, resume instead
-    if (this.isRunning && this.isPaused) {
-      this.resumeGenerations();
-      return;
-    }
+    if (!this.isHost() || !this.roomMetadata) return;
 
     this.isRunning = true;
     this.isPaused = false;
-    this.generationTimer = this.time.addEvent({
-      delay: GENERATION_TICK_MS,
-      callback: this.nextGeneration,
-      callbackScope: this,
-      loop: true,
-    });
-    this.updateGameStatus();
 
-    // emit game status update
-    if (this.roomMetadata) {
-      socketService.updateGameStatus(this.roomMetadata.id, "running");
+    if (!this.generationTimer) {
+      this.generationTimer = this.time.addEvent({
+        delay: GENERATION_TICK_MS,
+        callback: this.nextGeneration,
+        callbackScope: this,
+        loop: true,
+      });
+    } else {
+      this.generationTimer.paused = false;
     }
+
+    socketService.updateGameStatus(this.roomMetadata.id, "running");
+    this.updateGameStatus();
   }
 
   stopGenerations(): void {
-    if (!this.isHost()) return;
+    if (!this.isHost() || !this.roomMetadata) return;
 
-    if (this.isRunning || this.isPaused) {
-      this.isRunning = false;
-      this.isPaused = false;
-      if (this.generationTimer) {
-        this.generationTimer.destroy();
-        this.generationTimer = undefined;
-      }
-      this.updateGameStatus();
+    this.isRunning = false;
+    this.isPaused = false;
 
-      // emit game status update
-      if (this.roomMetadata) {
-        socketService.updateGameStatus(this.roomMetadata.id, "stopped");
-      }
+    if (this.generationTimer) {
+      this.generationTimer.destroy();
+      this.generationTimer = undefined;
     }
+
+    socketService.updateGameStatus(this.roomMetadata.id, "stopped");
+    this.updateGameStatus();
   }
 
   pauseGenerations(): void {
-    if (!this.isHost()) return;
+    if (!this.isHost() || !this.roomMetadata || !this.isRunning) return;
 
-    if (this.isRunning && !this.isPaused && this.generationTimer) {
-      this.isPaused = true;
+    this.isPaused = true;
+    if (this.generationTimer) {
       this.generationTimer.paused = true;
-      this.updateGameStatus();
-
-      // emit game status update
-      if (this.roomMetadata) {
-        socketService.updateGameStatus(this.roomMetadata.id, "paused");
-      }
     }
+
+    socketService.updateGameStatus(this.roomMetadata.id, "paused");
+    this.updateGameStatus();
   }
 
   resumeGenerations(): void {
-    if (!this.isHost()) return;
+    if (!this.isHost() || !this.roomMetadata || !this.isRunning || !this.isPaused) return;
 
-    if (this.isRunning && this.isPaused) {
-      this.isPaused = false;
-      if (this.generationTimer) {
-        this.generationTimer.paused = false;
-      }
-      this.updateGameStatus();
-
-      // emit game status update
-      if (this.roomMetadata) {
-        socketService.updateGameStatus(this.roomMetadata.id, "running");
-      }
+    this.isPaused = false;
+    if (this.generationTimer) {
+      this.generationTimer.paused = false;
     }
+
+    socketService.updateGameStatus(this.roomMetadata.id, "running");
+    this.updateGameStatus();
   }
 
   toggleGenerations(): void {
-    if (!this.isHost()) return;
+    if (!this.isHost() || !this.roomMetadata) return;
 
-    if (!this.isRunning) {
-      this.startGenerations();
-    } else if (this.isPaused) {
-      this.resumeGenerations();
-    } else {
+    if (this.isRunning) {
       this.stopGenerations();
+    } else {
+      this.startGenerations();
     }
   }
 
@@ -492,32 +529,36 @@ export class Game extends Scene {
   }
 
   private toggleCell(row: number, col: number, forceAlive: boolean = false): void {
+    if (!this.roomMetadata || !this.currentPlayerId) return;
+
     const cell = this.grid[row][col];
-    cell.isAlive = forceAlive || !cell.isAlive;
+    const newIsAlive = forceAlive || !cell.isAlive;
+    const player = this.roomMetadata.players.find((p) => p.id === this.currentPlayerId);
 
-    if (cell.isAlive && this.currentPlayerId) {
-      const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
-      cell.ownerId = this.currentPlayerId;
-      cell.color = player?.color;
-      this.updateCellVisuals(cell);
-    } else {
-      cell.ownerId = undefined;
-      cell.color = undefined;
-      this.updateCellVisuals(cell);
-    }
+    // create cell update
+    const update: CellUpdate = {
+      row,
+      col,
+      state: {
+        isAlive: newIsAlive,
+        ownerId: newIsAlive ? this.currentPlayerId : undefined,
+        color: newIsAlive ? player?.color : undefined,
+      },
+      timestamp: Date.now(),
+      userId: this.currentPlayerId,
+      roomId: this.roomMetadata.id,
+      generation: this.generation,
+    };
 
-    // update population count
+    cell.isAlive = update.state.isAlive;
+    cell.ownerId = update.state.ownerId;
+    cell.color = update.state.color;
+    this.updateCellVisuals(cell);
+
     this.updatePopulationCount();
 
-    // emit grid update to other players without incrementing generation
-    if (this.roomMetadata) {
-      socketService.updateGameState(
-        this.roomMetadata.id,
-        this.getGridState(),
-        false,
-        this.generation,
-      );
-    }
+    // emit update to server
+    socketService.updateGameState(this.roomMetadata.id, [update], false, this.generation);
   }
 
   private countLiveNeighbors(row: number, col: number): number {
@@ -539,10 +580,10 @@ export class Game extends Scene {
   }
 
   nextGeneration(): void {
-    if (this.isRunning && !this.isPaused) {
-      this.generation++;
-      this.updateGenerationCount(this.generation);
-    }
+    if (!this.isHost() || !this.isRunning || this.isPaused) return;
+
+    // increment generation at the start
+    const nextGeneration = this.generation + 1;
 
     // create a copy of the current state
     const nextState: { isAlive: boolean; ownerId?: string; color?: string }[][] = Array(GRID_ROWS)
@@ -550,20 +591,38 @@ export class Game extends Scene {
       .map(() => Array(GRID_COLS).fill({ isAlive: false }));
 
     // apply rules to each cell
+    const updates: CellUpdate[] = [];
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const neighbors = this.countLiveNeighbors(row, col);
         const cell = this.grid[row][col];
         const { willLive, newOwnerId, color } = this.applyCellRules(cell, neighbors);
+
         nextState[row][col] = {
           isAlive: willLive,
           ownerId: willLive ? newOwnerId : undefined,
           color,
         };
+
+        // if cell state changed, add to updates
+        if (cell.isAlive !== willLive || cell.ownerId !== newOwnerId || cell.color !== color) {
+          updates.push({
+            row,
+            col,
+            state: {
+              isAlive: willLive,
+              ownerId: newOwnerId,
+              color,
+            },
+            timestamp: Date.now(),
+            userId: this.currentPlayerId!,
+            roomId: this.roomMetadata!.id,
+            generation: nextGeneration,
+          });
+        }
       }
     }
 
-    // update the grid with new state
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const cell = this.grid[row][col];
@@ -575,17 +634,32 @@ export class Game extends Scene {
       }
     }
 
-    // update population count
+    this.generation = nextGeneration;
+    this.updateGenerationCount(this.generation);
     this.updatePopulationCount();
 
-    // emit grid update to other players
-    if (this.roomMetadata) {
-      socketService.updateGameState(
-        this.roomMetadata.id,
-        this.getGridState(),
-        false,
-        this.generation,
-      );
+    // always send an update to ensure generation sync
+    const heartbeat: CellUpdate = {
+      row: 0,
+      col: 0,
+      state: {
+        isAlive: false,
+        ownerId: undefined,
+        color: undefined,
+      },
+      timestamp: Date.now(),
+      userId: this.currentPlayerId!,
+      roomId: this.roomMetadata!.id,
+      generation: this.generation,
+      isHeartbeat: updates.length === 0,
+    };
+
+    // send updates to server
+    if (updates.length > 0) {
+      updates.push(heartbeat);
+      socketService.updateGameState(this.roomMetadata!.id, updates, false, this.generation);
+    } else {
+      socketService.updateGameState(this.roomMetadata!.id, [heartbeat], false, this.generation);
     }
   }
 
@@ -605,6 +679,10 @@ export class Game extends Scene {
   }
 
   private placePatternRandomly(pattern: Pattern): void {
+    if (!this.roomMetadata?.id || !this.currentPlayerId) return;
+    const roomId = this.roomMetadata.id;
+    const currentPlayerId = this.currentPlayerId;
+
     // calculate valid placement area considering pattern dimensions
     const validStartRow = Math.floor(pattern.height / 2);
     const validEndRow = GRID_ROWS - Math.ceil(pattern.height / 2);
@@ -615,66 +693,75 @@ export class Game extends Scene {
     const centerRow = Math.floor(Math.random() * (validEndRow - validStartRow)) + validStartRow;
     const centerCol = Math.floor(Math.random() * (validEndCol - validStartCol)) + validStartCol;
 
-    // create a copy of the current grid state
-    const newGridState = this.grid.map((row) =>
-      row.map((cell) => ({
-        isAlive: cell.isAlive,
-        ownerId: cell.ownerId,
-        color: cell.color,
-      })),
-    );
+    const player = this.roomMetadata.players.find((p) => p.id === currentPlayerId);
+    if (!player?.color) return;
+    const playerColor = player.color;
 
-    // update the grid state copy with pattern cells
+    // create updates for pattern cells
+    const updates: CellUpdate[] = [];
     pattern.cells.forEach(([rowOffset, colOffset]) => {
       const row = centerRow + rowOffset;
       const col = centerCol + colOffset;
 
       // ensure we're within grid bounds
       if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
-        newGridState[row][col] = {
-          isAlive: true,
-          ownerId: this.currentPlayerId,
-          color: this.currentPlayerId
-            ? this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId)?.color
-            : undefined,
+        const update: CellUpdate = {
+          row,
+          col,
+          state: {
+            isAlive: true,
+            ownerId: currentPlayerId,
+            color: playerColor,
+          },
+          timestamp: Date.now(),
+          userId: currentPlayerId,
+          roomId,
+          generation: this.generation,
         };
+        updates.push(update);
+
+        // apply update locally
+        const cell = this.grid[row][col];
+        cell.isAlive = true;
+        cell.ownerId = currentPlayerId;
+        cell.color = playerColor;
+        this.updateCellVisuals(cell);
       }
     });
 
-    // apply all updates to the actual grid at once
-    for (let row = 0; row < GRID_ROWS; row++) {
-      for (let col = 0; col < GRID_COLS; col++) {
-        const newState = newGridState[row][col];
-        const cell = this.grid[row][col];
-        cell.isAlive = newState.isAlive;
-        cell.ownerId = newState.ownerId;
-        cell.color = newState.color;
-        this.updateCellVisuals(cell);
-      }
-    }
-
-    // update population count once after all cells are placed
     this.updatePopulationCount();
 
-    // emit a single grid update to other players
-    if (this.roomMetadata) {
-      socketService.updateGameState(
-        this.roomMetadata.id,
-        this.getGridState(),
-        false,
-        this.generation,
-      );
+    // emit updates to server
+    if (updates.length > 0) {
+      socketService.updateGameState(roomId, updates, false, this.generation);
     }
   }
 
   private resetGrid(): void {
-    // stop generations if running
+    if (!this.roomMetadata || !this.currentPlayerId) return;
+
     this.stopGenerations();
 
     // reset all cells to dead state
+    const updates: CellUpdate[] = [];
     for (let row = 0; row < GRID_ROWS; row++) {
       for (let col = 0; col < GRID_COLS; col++) {
         const cell = this.grid[row][col];
+        if (cell.isAlive) {
+          updates.push({
+            row,
+            col,
+            state: {
+              isAlive: false,
+              ownerId: undefined,
+              color: undefined,
+            },
+            timestamp: Date.now(),
+            userId: this.currentPlayerId,
+            roomId: this.roomMetadata.id,
+            generation: 0,
+          });
+        }
         cell.isAlive = false;
         cell.ownerId = undefined;
         cell.color = undefined;
@@ -685,15 +772,13 @@ export class Game extends Scene {
     // reset generation counter
     this.generation = 0;
 
-    // update population count (this will set it to 0 since all cells are dead)
     this.updatePopulationCount();
 
-    // reset generation count display
     this.updateGenerationCount(0);
 
-    // emit grid update to other players with reset generation
-    if (this.roomMetadata) {
-      socketService.updateGameState(this.roomMetadata.id, this.getGridState(), true, 0);
+    // emit updates to server
+    if (updates.length > 0) {
+      socketService.updateGameState(this.roomMetadata.id, updates, true, 0);
     }
   }
 }
