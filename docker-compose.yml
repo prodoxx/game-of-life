@@ -51,5 +51,8 @@ volumes:
   redis_data:
     driver: local
   api_node_modules:
+    driver: local
   app_node_modules:
+    driver: local
   shared_node_modules:
+    driver: local
