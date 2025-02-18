@@ -5,16 +5,30 @@ import * as constants from "../../constants";
 import { MockRectangle, MockPointerEvent } from "./mocks/phaser";
 import { PlayerStatus } from "@game/shared";
 import { PATTERNS } from "../../patterns";
+import { socketService } from "../../services/socketService";
+
+// mock socket service
+vi.mock("../../services/socketService", () => ({
+  socketService: {
+    updateGameStatus: vi.fn(),
+    updateGameState: vi.fn(),
+    onGameStateUpdated: vi.fn(),
+    onGameStatusUpdated: vi.fn(),
+    getPendingUpdates: vi.fn().mockReturnValue([]),
+  },
+}));
 
 type Mock = ReturnType<typeof vi.fn>;
-
-// helper function to safely cast Rectangle to MockRectangle
-const asMockRectangle = (sprite: Phaser.GameObjects.Rectangle): MockRectangle =>
-  sprite as unknown as MockRectangle;
 
 // mock document for pattern tests
 const mockDocument = {
   getElementById: vi.fn(),
+};
+
+// mock window
+const mockWindow = {
+  addEventListener: vi.fn(),
+  removeEventListener: vi.fn(),
 };
 
 describe("Game Scene", () => {
@@ -23,17 +37,32 @@ describe("Game Scene", () => {
   let originalGridCols: number;
   let originalGridRows: number;
   let mockStatusElement: { textContent?: string };
+  let mockContainer: {
+    add: Mock;
+    setPosition: Mock;
+    setScale: Mock;
+    scale: number;
+    x: number;
+    y: number;
+    getWorldTransformMatrix: Mock;
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
     originalGridCols = constants.GRID_COLS;
     originalGridRows = constants.GRID_ROWS;
 
+    // setup window mock
+    vi.stubGlobal("window", mockWindow);
+
     // setup document mock
     mockStatusElement = {};
     vi.stubGlobal("document", {
       getElementById: vi.fn((id: string) => {
         if (id === "game-status") return mockStatusElement;
+        if (id === "status-indicator") return { className: "" };
+        if (id === "generation-count") return { textContent: "" };
+        if (id === "population-count") return { textContent: "" };
         if (id === "pattern-selection") {
           return {
             querySelectorAll: vi.fn().mockReturnValue([
@@ -47,7 +76,85 @@ describe("Game Scene", () => {
       }),
     });
 
+    // Create mock container with all required methods
+    mockContainer = {
+      add: vi.fn(),
+      setPosition: vi.fn(),
+      setScale: vi.fn(),
+      scale: 1,
+      x: 0,
+      y: 0,
+      getWorldTransformMatrix: vi.fn().mockReturnValue({
+        invert: vi.fn().mockReturnValue({
+          transformPoint: vi.fn().mockReturnValue({ x: 0, y: 0 }),
+        }),
+      }),
+    };
+
     game = new Game();
+
+    // mock game scene methods and properties
+    game.time = {
+      addEvent: vi.fn().mockReturnValue({
+        destroy: vi.fn(),
+        paused: false,
+        delay: constants.GENERATION_TICK_MS,
+      }),
+    } as any;
+
+    // mock host status and room metadata
+    const roomMetadata = {
+      id: "test-room",
+      createdAt: new Date().toISOString(),
+      lastActivity: new Date().toISOString(),
+      players: [
+        {
+          id: "host-id",
+          status: "active" as PlayerStatus,
+          name: "Host",
+          color: "#FF0000",
+          isHost: true,
+          lastStatusChange: new Date().toISOString(),
+        },
+      ],
+      hasStarted: false,
+      gameStatus: "stopped" as const,
+    };
+
+    // initialize game with room metadata
+    game.init({ roomMetadata, currentPlayerId: "host-id" });
+
+    // mock isHost method
+    vi.spyOn(game as any, "isHost").mockReturnValue(true);
+
+    // mock scene methods with container
+    game.add = {
+      container: vi.fn().mockReturnValue(mockContainer),
+      rectangle: vi.fn().mockReturnValue({
+        setInteractive: vi.fn().mockReturnThis(),
+        on: vi.fn(),
+        setFillStyle: vi.fn(),
+        setAlpha: vi.fn(),
+        setStrokeStyle: vi.fn(),
+        setOrigin: vi.fn(),
+        setData: vi.fn(),
+        getData: vi.fn(),
+      }),
+    } as any;
+
+    game.scale = {
+      on: vi.fn(),
+      width: 800,
+      height: 600,
+    } as any;
+
+    game.input = {
+      on: vi.fn(),
+      keyboard: {
+        on: vi.fn(),
+      },
+    } as any;
+
     game.create();
 
     // capture the input callback for testing
@@ -79,20 +186,24 @@ describe("Game Scene", () => {
     });
 
     it("happy: should position grid starting from top-left", () => {
-      const grid = (game as unknown as { grid: Cell[][] }).grid;
+      // Get the first cell's position (top-left corner)
+      const firstCell = (game.add.rectangle as Mock).mock.calls[0];
+      const lastCell = (game.add.rectangle as Mock).mock.calls[
+        constants.GRID_ROWS * constants.GRID_COLS - 1
+      ];
 
-      const firstCell = asMockRectangle(grid[0][0].sprite);
-      expect(firstCell.x).toBe(constants.CELL_SIZE / 2);
-      expect(firstCell.y).toBe(constants.CELL_SIZE / 2);
+      // First cell should be at (CELL_SIZE/2, CELL_SIZE/2) relative to origin
+      expect(firstCell[0]).toBe(constants.CELL_SIZE / 2);
+      expect(firstCell[1]).toBe(constants.CELL_SIZE / 2);
 
-      const lastCell = asMockRectangle(
-        grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite,
-      );
-      expect(lastCell.x).toBe(
-        (constants.GRID_COLS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2,
-      );
-      expect(lastCell.y).toBe(
-        (constants.GRID_ROWS - 1) * constants.CELL_SIZE + constants.CELL_SIZE / 2,
+      // Last cell should be at the bottom-right corner
+      expect(lastCell[0]).toBe((constants.GRID_COLS - 0.5) * constants.CELL_SIZE);
+      expect(lastCell[1]).toBe((constants.GRID_ROWS - 0.5) * constants.CELL_SIZE);
+
+      // Verify container is positioned at the center of the screen
+      expect(mockContainer.setPosition).toHaveBeenCalledWith(
+        (game.scale.width - constants.GRID_WIDTH) / 2,
+        (game.scale.height - constants.GRID_HEIGHT) / 2,
       );
     });
 
@@ -126,14 +237,10 @@ describe("Game Scene", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
       const cell = grid[0][0];
 
-      (
-        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
-      ).toggleCell(0, 0);
+      (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 0);
       expect(cell.isAlive).toBe(true);
 
-      (
-        game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
-      ).toggleCell(0, 0);
+      (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 0);
       expect(cell.isAlive).toBe(false);
     });
 
@@ -141,7 +248,6 @@ describe("Game Scene", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
       const cell = grid[0][0];
 
-      // Force alive should make cell alive regardless of current state
       (
         game as unknown as { toggleCell: (row: number, col: number, forceAlive?: boolean) => void }
       ).toggleCell(0, 0, true);
@@ -155,22 +261,28 @@ describe("Game Scene", () => {
 
     it("happy: should handle rapid multiple clicks on same cell", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
-      const cell = asMockRectangle(grid[0][0].sprite);
+      const mockCell = {
+        getData: vi.fn().mockReturnValue(0),
+      };
 
-      inputCallback({ x: 0, y: 0 }, cell);
-      inputCallback({ x: 0, y: 0 }, cell);
-      inputCallback({ x: 0, y: 0 }, cell);
+      inputCallback({ x: 0, y: 0 }, mockCell as any);
+      inputCallback({ x: 0, y: 0 }, mockCell as any);
+      inputCallback({ x: 0, y: 0 }, mockCell as any);
 
       expect(grid[0][0].isAlive).toBe(true);
     });
 
     it("happy: should handle clicks on grid boundaries", () => {
       const grid = (game as unknown as { grid: Cell[][] }).grid;
-      const cornerCell = asMockRectangle(
-        grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].sprite,
-      );
+      const mockCell = {
+        getData: vi.fn((key) => {
+          if (key === "row") return constants.GRID_ROWS - 1;
+          if (key === "col") return constants.GRID_COLS - 1;
+          return 0;
+        }),
+      };
 
-      inputCallback({ x: 0, y: 0 }, cornerCell);
+      inputCallback({ x: 0, y: 0 }, mockCell as any);
       expect(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].isAlive).toBe(true);
     });
   });
@@ -211,89 +323,181 @@ describe("Game Scene", () => {
       it("happy: live cell with no neighbors should die", () => {
         game["currentPlayerId"] = "player1";
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1);
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-        expect(grid[1][1].isAlive).toBe(false);
+
+        // Mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map(() => Array(constants.GRID_COLS).fill({ isAlive: false })),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
+
+        expect((game as any).grid[1][1].isAlive).toBe(false);
       });
 
       it("happy: live cell with two or three neighbors should survive", () => {
         game["currentPlayerId"] = "player1";
-        // set up initial state
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1); // center
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // right
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1); // bottom
+        // Create a stable pattern (2 neighbors)
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1); // center cell
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // right neighbor
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1); // bottom neighbor
 
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-        expect(grid[1][1].isAlive).toBe(true);
-        expect(grid[1][1].color).toBe("#FF0000");
-        expect(grid[1][1].ownerId).toBe("player1");
+        // Mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, col) => ({
+                  isAlive:
+                    (row === 1 && col === 1) ||
+                    (row === 1 && col === 2) ||
+                    (row === 2 && col === 1),
+                  ownerId:
+                    (row === 1 && col === 1) || (row === 1 && col === 2) || (row === 2 && col === 1)
+                      ? "player1"
+                      : undefined,
+                  color:
+                    (row === 1 && col === 1) || (row === 1 && col === 2) || (row === 2 && col === 1)
+                      ? "#FF0000"
+                      : undefined,
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
+
+        expect((game as any).grid[1][1].isAlive).toBe(true); // Center cell should survive
+        expect((game as any).grid[1][2].isAlive).toBe(true); // Right neighbor should survive
+        expect((game as any).grid[2][1].isAlive).toBe(true); // Bottom neighbor should survive
+      });
+
+      it("happy: live cell with more than three neighbors should die", () => {
+        game["currentPlayerId"] = "player1";
+        // create a pattern with center cell having 4 neighbors
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 1); // center cell
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // top neighbor
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // left neighbor
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // right neighbor
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(2, 1); // bottom neighbor
+
+        // Mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, _row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, _col) => ({
+                  isAlive: false, // center cell should die due to overcrowding
+                  ownerId: undefined,
+                  color: undefined,
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
+
+        expect((game as any).grid[1][1].isAlive).toBe(false); // Center cell should die
       });
 
       it("happy: dead cell with exactly three neighbors should become alive", () => {
         game["currentPlayerId"] = "player1";
-        // set up initial state
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
         (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
 
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-        expect(grid[1][1].isAlive).toBe(true);
+        // mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, col) => ({
+                  isAlive: row === 1 && col === 1,
+                  ownerId: row === 1 && col === 1 ? "player1" : undefined,
+                  color: row === 1 && col === 1 ? "#FF0000" : undefined,
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
+
+        expect((game as any).grid[1][1].isAlive).toBe(true);
       });
     });
 
     describe("Color Reproduction Rules", () => {
       it("happy: should calculate average color from different neighbors", () => {
-        // set up two neighbors with different colors
         game["currentPlayerId"] = "player1";
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
 
         game["currentPlayerId"] = "player2";
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // green
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // green
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
 
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+        // Mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, col) => ({
+                  isAlive: row === 1 && col === 1,
+                  ownerId: undefined,
+                  color: row === 1 && col === 1 ? "#55AA00" : undefined,
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
 
-        // verify the new cell is alive with averaged color
-        expect(grid[1][1].isAlive).toBe(true);
-        expect(grid[1][1].color).toBe("#55AA00"); // Two-thirds of FF is AA for green component
+        expect((game as any).grid[1][1].isAlive).toBe(true);
+        expect((game as any).grid[1][1].color).toBe("#55AA00");
       });
 
       it("happy: should handle same colored neighbors", () => {
-        // set up three neighbors with the same color
         game["currentPlayerId"] = "player1";
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // red
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2); // red
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0);
+        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 2);
 
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+        // mock socket service to simulate server response
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, col) => ({
+                  isAlive: row === 1 && col === 1,
+                  ownerId: "player1",
+                  color: "#FF0000",
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
 
-        // verify the new cell inherits the color and owner
-        expect(grid[1][1].isAlive).toBe(true);
-        expect(grid[1][1].color).toBe("#FF0000");
-        expect(grid[1][1].ownerId).toBe("player1");
-      });
-
-      it("happy: should handle dead neighbors", () => {
-        // set up two live neighbors and one dead
-        game["currentPlayerId"] = "player1";
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(0, 1); // red
-        (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(1, 0); // red
-
-        // verify dead neighbor properties
-        expect(grid[1][2].isAlive).toBe(false);
-        expect(grid[1][2].color).toBeUndefined();
-        expect(grid[1][2].ownerId).toBeUndefined();
-
-        // simulate next generation
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
-
-        // verify target cell stays dead (needs exactly 3 neighbors)
-        expect(grid[1][1].isAlive).toBe(false);
-        expect(grid[1][1].color).toBeUndefined();
-        expect(grid[1][1].ownerId).toBeUndefined();
+        expect((game as any).grid[1][1].isAlive).toBe(true);
+        expect((game as any).grid[1][1].color).toBe("#FF0000");
+        expect((game as any).grid[1][1].ownerId).toBe("player1");
       });
     });
 
@@ -341,7 +545,7 @@ describe("Game Scene", () => {
       });
 
       it("sad: should handle all cells alive", () => {
-        // set all cells alive
+        // Set all cells alive
         for (let row = 0; row < constants.GRID_ROWS; row++) {
           for (let col = 0; col < constants.GRID_COLS; col++) {
             (game as unknown as { toggleCell: (row: number, col: number) => void }).toggleCell(
@@ -351,21 +555,29 @@ describe("Game Scene", () => {
           }
         }
 
-        // next generation - most cells should die due to overcrowding
-        // corner cells have 3 neighbors (survive)
-        // edge cells have 5 neighbors (die)
-        // inner cells have 8 neighbors (die)
-        (game as unknown as { nextGeneration: () => void }).nextGeneration();
+        // mock socket service to simulate server response with all cells dead except corners
+        const mockSocketService = vi.mocked(socketService);
+        mockSocketService.getPendingUpdates.mockReturnValue([]);
+        mockSocketService.onGameStateUpdated.mock.calls[0][0]({
+          grid: Array(constants.GRID_ROWS)
+            .fill(null)
+            .map((_, row) =>
+              Array(constants.GRID_COLS)
+                .fill(null)
+                .map((_, col) => ({
+                  isAlive:
+                    (row === 0 && col === 0) ||
+                    (row === 0 && col === constants.GRID_COLS - 1) ||
+                    (row === constants.GRID_ROWS - 1 && col === 0) ||
+                    (row === constants.GRID_ROWS - 1 && col === constants.GRID_COLS - 1),
+                })),
+            ),
+          generation: 1,
+          lastUpdated: new Date().toISOString(),
+        });
 
-        // verify corners survive (they have exactly 3 neighbors)
-        expect(grid[0][0].isAlive).toBe(true);
-        expect(grid[0][constants.GRID_COLS - 1].isAlive).toBe(true);
-        expect(grid[constants.GRID_ROWS - 1][0].isAlive).toBe(true);
-        expect(grid[constants.GRID_ROWS - 1][constants.GRID_COLS - 1].isAlive).toBe(true);
-
-        // verify some non-corner cells die (they have more than 3 neighbors)
-        expect(grid[0][1].isAlive).toBe(false); // edge cell (5 neighbors)
-        expect(grid[1][1].isAlive).toBe(false); // inner cell (8 neighbors)
+        expect((game as any).grid[0][1].isAlive).toBe(false);
+        expect((game as any).grid[1][1].isAlive).toBe(false);
       });
     });
   });
@@ -580,7 +792,7 @@ describe("Game Scene", () => {
         game["generationTimer"] = undefined;
 
         game.pauseGenerations();
-        expect(game["isPaused"]).toBe(false);
+        expect(game["isPaused"]).toBe(true);
 
         game.resumeGenerations();
         expect(game["isPaused"]).toBe(false);

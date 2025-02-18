@@ -81,8 +81,6 @@ export class Game extends Scene {
 
     // handle game status updates
     socketService.onGameStatusUpdated(({ status }) => {
-      console.log("[Debug] Game status update received:", status);
-
       switch (status) {
         case "running":
           this.isRunning = true;
@@ -154,7 +152,7 @@ export class Game extends Scene {
     }
 
     // reapply any pending updates
-    const pendingUpdates = socketService.getPendingUpdates();
+    const pendingUpdates = socketService.getPendingUpdates() ?? [];
     for (const update of pendingUpdates) {
       const cell = this.grid[update.row][update.col];
       cell.isAlive = update.state.isAlive;
@@ -260,8 +258,6 @@ export class Game extends Scene {
 
     statusElement.textContent = status;
     statusIndicator.className = `w-2 h-2 rounded-full ${indicatorColor}`;
-
-    console.log("[Debug] Game status updated:", status);
   }
 
   private isHost(): boolean {
