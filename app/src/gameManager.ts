@@ -411,7 +411,11 @@ class GameManager {
     document.getElementById("stats-panel")?.classList.remove("hidden");
     document.getElementById("game-controls")?.classList.remove("hidden");
     document.getElementById("player-list")?.classList.remove("hidden");
-    document.getElementById("keyboard-controls")?.classList.remove("hidden");
+    const currentPlayer = this.findCurrentPlayer();
+
+    if (currentPlayer?.isHost) {
+      document.getElementById("keyboard-controls")?.classList.remove("hidden");
+    }
 
     this.updateGamePlayerList(gameRoomMetadata.players);
     this.showPatternSelection();
