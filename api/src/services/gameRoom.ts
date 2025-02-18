@@ -60,11 +60,7 @@ class GameRoomService {
 
         // merge grids if there's an existing state and we're not resetting
         let mergedGrid = grid;
-        if (
-          currentState &&
-          !reset &&
-          currentState.lastUpdated > new Date(Date.now() - 1000).toISOString()
-        ) {
+        if (currentState && !reset) {
           mergedGrid = this.mergeGrids(currentState.grid, grid);
         }
 
@@ -265,6 +261,7 @@ class GameRoomService {
         },
       ],
       hasStarted: false,
+      gameStatus: "stopped",
     };
 
     GameRoomWithStatusSchema.parse(metadata);
