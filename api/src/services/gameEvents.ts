@@ -125,17 +125,11 @@ export class GameEventsService {
       const newGrid = currentState.grid.map((row) => [...row]);
       let latestGeneration = currentState.generation;
 
-      // track if we have any heartbeat updates
-      let hasHeartbeat = false;
-
       for (const batch of updates) {
         for (const update of batch.updates) {
-          if (update.isHeartbeat) {
-            hasHeartbeat = true;
-            // only update generation for heartbeat updates (game progression)
-            if (update.generation > latestGeneration) {
-              latestGeneration = update.generation;
-            }
+          // update generation if it's newer, regardless of update type
+          if (update.generation > latestGeneration) {
+            latestGeneration = update.generation;
           }
 
           // only apply grid updates for non-heartbeat updates
@@ -145,15 +139,12 @@ export class GameEventsService {
         }
       }
 
-      // only increment generation if we have heartbeat updates (game progression)
-      const nextGeneration = hasHeartbeat ? latestGeneration : currentState.generation;
-
       // update the game state with all changes at once
       const finalState = await gameRoomService.updateGameState(
         roomId,
         newGrid,
         false,
-        nextGeneration,
+        latestGeneration,
       );
       if (finalState) {
         this.io.to(roomId).emit("game:state-updated", finalState);
