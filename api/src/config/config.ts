@@ -1,7 +1,7 @@
 export const config = {
   roomExpiration: 24 * 60 * 60, // 24 hours in seconds
-  playerColor: "#0000FF", // default blue color for host
-  playerLimit: 5, // maximum number of players per game
-  reconnectionTimeout: 10000, // 10 seconds to allow for reconnection
-  maxUpdateRetries: 3, // maximum number of retries for optimistic locking in game state updates
+  playerColor: "#FF0000", // default player color
+  playerLimit: 8, // maximum players per room
+  reconnectionTimeout: 30 * 1000, // 30 seconds in milliseconds
+  maxUpdateRetries: 3, // maximum retries for updating game state
 };
