@@ -16,6 +16,7 @@ One-click Deploy to Railway:
     - [State Management and Concurrency](#state-management-and-concurrency)
       - [Current Implementation](#current-implementation)
       - [Event Flow](#event-flow)
+      - [Game State Processing](#game-state-processing)
       - [Game Metadata Persistence](#game-metadata-persistence)
       - [Redis Persistence \& Reliability](#redis-persistence--reliability)
       - [Why Redis Over Traditional Databases](#why-redis-over-traditional-databases)
@@ -67,13 +68,13 @@ The game uses a focused state management system:
 1. **Game State Storage**
 
    - Game room metadata and grid state stored in Redis
-   - Optimistic Concurrency Control (OCC) for state accuracy
+   - Queue-based update system with timestamps for state accuracy
    - Automatic state cleanup with expiration
 
 2. **Real-time Updates**
 
    - Socket.IO for immediate player actions and updates
-   - Direct state synchronization between players
+   - Batched state updates with timestamp ordering
    - Automatic reconnection handling
 
 3. **Recovery Handling**
@@ -87,14 +88,36 @@ The game uses a focused state management system:
 Player Action (UI) --[Socket.IO]--> Server
      ^                    |
      |                    v
-     |            [State Validation]
+     |            [Update Queue]
      |                    |
      |                    v
-     |            [Redis Update w/OCC]
+     |            [Batch Processing]
+     |                    |
+     |                    v
+     |            [Redis Update]
      |                    |
      |                    v
 Other Players (in same room) <--[Socket.IO Broadcast]
 ```
+
+#### Game State Processing
+
+1. **Update Queueing**
+
+   - Updates are queued with timestamps for ordering
+   - Batched processing reduces Redis operations
+   - 50ms delay for optimal batching
+
+2. **State Synchronization**
+
+   - Updates processed in timestamp order
+   - Heartbeat system for generation tracking
+   - Atomic batch application of changes
+
+3. **Conflict Resolution**
+   - Timestamp-based ordering ensures consistency
+   - Latest state always reflected across all clients
+   - Automatic conflict resolution through queue processing
 
 #### Game Metadata Persistence
 
@@ -119,7 +142,7 @@ Game metadata is persisted in Redis for several critical reasons:
 
 #### Redis Persistence & Reliability
 
-The game implements Redis persistence and reconnection strategies for improved reliability:
+The game implements Redis persistence and queue-based update strategies for improved reliability:
 
 1. **Persistence Configuration**
 
@@ -142,7 +165,14 @@ The game implements Redis persistence and reconnection strategies for improved r
   - Redis is primarily used as a temporary state holder
   - Game can recover from brief state loss through client reconnection
 
-2. **Reconnection Strategy**
+2. **Update Processing**
+
+   - Queue-based system with 50ms batching window
+   - Timestamp ordering for consistent state updates
+   - Heartbeat mechanism for generation tracking
+   - Automatic conflict resolution through queue processing
+
+3. **Reconnection Strategy**
    - Exponential backoff with 50ms base delay
    - Maximum retry delay capped at 3 seconds
    - Automatic reconnection handling
@@ -161,11 +191,11 @@ Redis provides significant advantages for our real-time game state management:
    - Minimal disk I/O impact (async AOF writes every second)
    - Reads always served from memory, perfect for game state queries
 
-2. **Atomic Operations**
+2. **Queue Processing**
 
-   - Built-in atomic transactions without connection overhead
-   - Optimistic concurrency control (WATCH/MULTI) with minimal latency
-   - Ideal for concurrent player actions in the same game room
+   - Efficient batching of state updates
+   - Timestamp-based ordering for consistency
+   - Minimal latency for real-time game updates
 
 3. **Simpler Architecture**
 
@@ -220,14 +250,22 @@ Traditional databases like PostgreSQL or MongoDB would add unnecessary complexit
 ### Trade-offs and Considerations
 
 1. **Performance vs. Consistency**
+   OCC didn't work out because handling updates one by one is too slow and wouldn't scale if we don't add
+   concurrency. Therefore, I chose to use a queue-based strategy with batching.
+   Trade offs:
 
-   - Chose consistency for game state accuracy
-     - OCC ensures accurate state updates
-     - Small latency cost for state validation
-   - Optimistic UI updates for responsiveness
+   - Balanced approach favoring consistency:
+     - Queue-based updates with 50ms batching window for performance
+     - Timestamp ordering ensures state consistency
+     - Heartbeat system for accurate generation tracking
+   - Performance optimizations:
+     - Batched state updates reduce Redis operations
+     - Client-side state prediction for responsiveness
+     - Efficient update merging on server
    - Future options:
-     - Add eventual consistency for non-critical updates
      - Implement state diffing for bandwidth optimization
+     - Add regional server nodes for lower latency
+     - Fine-tune batching window based on player count
 
 2. **Scalability**
 
@@ -261,14 +299,14 @@ Traditional databases like PostgreSQL or MongoDB would add unnecessary complexit
 
 ## Assumptions Made
 
-We made a few assumptions.
+I made a few assumptions.
 
-1. Typlically games like this have rooms and since rooms fits in perfectly with Socket.io. I went with this design. There is a 5 users per game that can be configured at `api/src/config/config.ts`. the grid is small so I figured we would want more than 5. We could have also allowed for panning and unlimited cells and with this allow a lot of users but we could do this later if we had time.
+1. Typlically games like this have rooms and since rooms fits in perfectly with Socket.io. I went with this design. There is a 5 users per game that can be configured at `api/src/config/config.ts`. the grid is small so I figured we would want more than 5. I could have also allowed for panning and unlimited cells and with this allow a lot of users but we could do this later if we had time.
 2. Predefined pattern put by a user covers an alive cell. They don't go out of the grid container, though.
-3. We added a room link so the host can share it with others so other people can join. This wasn't in the spec but it made sense to me given that I play games often.
-4. We tag the user with a userId that we save in localStorage so if they disconnect and come back later, their color and state stayed the same and they can continue playing.
-5. The specs didn't say but we made the game rooms short lived. We set it to 24 hours in `api/src/config/config.ts` so it should automatically remove the room state and game state after that time. We did this because we just assumed the games won't be long and also to save resources especially since we are using redis.
-6. We used esbuild for the API because it's faster to build and also easier to configure with Typescript's ESM related config.
+3. I added a room link so the host can share it with others so other people can join. This wasn't in the spec but it made sense to me given that I play games often.
+4. I tag a user with a userId that we save in localStorage so if they disconnect and come back later, their color and state stayed the same and they can continue playing.
+5. The specs didn't say but I made the game rooms short lived. I set it to 24 hours in `api/src/config/config.ts` so it should automatically remove the room state and game state after that time. I did this because I just assumed the games won't be long and also to save resources especially since we are using redis.
+6. I used esbuild for the API because it's faster to build and also easier to configure with Typescript's ESM related config.
 7. Users can't join a room once the game as started. This is a typical design for most games I've seen. It simplifies things but its possible to allow this.
 8. This will only be a desktop game so time wasn't spent making it look good on smaller screens.
 
@@ -331,7 +369,7 @@ In both `/app` and `/api` you have access to these commands:
 
 - Unit tests with Vitest were done for both app and api with a focus on `app` because of time.
 - Integration testing (missing because of time). **TODO later maybe.**
-  - We could use Playwrite for E2E testing
+  - I could use Playwrite for E2E testing
   - Vitest for integration testing and since we have a docker-compose file already, we can easily spin up a Redis instance for testing and reuse the images to create test instances for testing.
 
 ## Deployment
