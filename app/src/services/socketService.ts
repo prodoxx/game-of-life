@@ -6,7 +6,7 @@ class SocketService {
   private socket: Socket | null = null;
   private isConnected = false;
   private pendingUpdates: Map<string, CellUpdate> = new Map();
-  private currentUserId?: string;
+
   constructor() {
     this.init();
     if (typeof window !== "undefined") {
@@ -62,8 +62,6 @@ class SocketService {
         reject(new Error("Socket not initialized"));
         return;
       }
-
-      this.currentUserId = userId;
 
       // handle room state response
       this.socket.once("game:room-state", (state: GameRoomMetadata) => {
