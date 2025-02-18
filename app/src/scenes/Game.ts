@@ -68,6 +68,21 @@ export class Game extends Scene {
       this.updateGenerationCount(data.generation);
       this.updatePopulationCount();
     });
+
+    // handle game status updates
+    socketService.onGameStatusUpdated(({ status }) => {
+      switch (status) {
+        case "running":
+          if (!this.isRunning) this.startGenerations();
+          break;
+        case "paused":
+          if (this.isRunning && !this.isPaused) this.pauseGenerations();
+          break;
+        case "stopped":
+          if (this.isRunning) this.stopGenerations();
+          break;
+      }
+    });
   }
 
   private updateGenerationCount(generation: number): void {
@@ -116,6 +131,9 @@ export class Game extends Scene {
   }
 
   private setupGenerationKeyboardControls(): void {
+    // only setup controls for host
+    if (!this.isHost()) return;
+
     const keyboard = this.input.keyboard;
     if (!keyboard) return;
 
@@ -188,7 +206,15 @@ export class Game extends Scene {
     statusElement.textContent = status;
   }
 
+  private isHost(): boolean {
+    if (!this.roomMetadata || !this.currentPlayerId) return false;
+    const currentPlayer = this.roomMetadata.players.find((p) => p.id === this.currentPlayerId);
+    return currentPlayer?.isHost ?? false;
+  }
+
   startGenerations(): void {
+    if (!this.isHost()) return;
+
     if (!this.isRunning) {
       this.isRunning = true;
       this.isPaused = false;
@@ -199,36 +225,64 @@ export class Game extends Scene {
         loop: true,
       });
       this.updateGameStatus();
+
+      // emit game status update
+      if (this.roomMetadata) {
+        socketService.updateGameStatus(this.roomMetadata.id, "running");
+      }
     }
   }
 
   stopGenerations(): void {
+    if (!this.isHost()) return;
+
     if (this.isRunning) {
       this.isRunning = false;
       this.isPaused = false;
       this.generationTimer?.destroy();
       this.generationTimer = undefined;
       this.updateGameStatus();
+
+      // emit game status update
+      if (this.roomMetadata) {
+        socketService.updateGameStatus(this.roomMetadata.id, "stopped");
+      }
     }
   }
 
   pauseGenerations(): void {
+    if (!this.isHost()) return;
+
     if (this.isRunning && !this.isPaused && this.generationTimer) {
       this.isPaused = true;
       this.generationTimer.paused = true;
       this.updateGameStatus();
+
+      // emit game status update
+      if (this.roomMetadata) {
+        socketService.updateGameStatus(this.roomMetadata.id, "paused");
+      }
     }
   }
 
   resumeGenerations(): void {
+    if (!this.isHost()) return;
+
     if (this.isRunning && this.isPaused && this.generationTimer) {
       this.isPaused = false;
       this.generationTimer.paused = false;
       this.updateGameStatus();
+
+      // emit game status update
+      if (this.roomMetadata) {
+        socketService.updateGameStatus(this.roomMetadata.id, "running");
+      }
     }
   }
 
   toggleGenerations(): void {
+    if (!this.isHost()) return;
+
     if (this.isRunning) {
       this.stopGenerations();
     } else {

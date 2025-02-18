@@ -1,6 +1,6 @@
 import { io, Socket } from "socket.io-client";
 import { config } from "../config";
-import type { GameRoomMetadata, CellState } from "@game/shared";
+import type { GameRoomMetadata, CellState, GameStatus } from "@game/shared";
 
 class SocketService {
   private socket: Socket | null = null;
@@ -131,6 +131,15 @@ class SocketService {
     callback: (data: { grid: CellState[][]; generation: number; lastUpdated: string }) => void,
   ): void {
     this.socket?.on("game:state-updated", callback);
+  }
+
+  public updateGameStatus(roomId: string, status: GameStatus): void {
+    if (!this.socket) return;
+    this.socket.emit("game:status-update", { roomId, status });
+  }
+
+  public onGameStatusUpdated(callback: (data: { status: GameStatus }) => void): void {
+    this.socket?.on("game:status-updated", callback);
   }
 }
 
