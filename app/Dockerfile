@@ -40,7 +40,7 @@ COPY app ./app/
 
 # Build shared package first
 WORKDIR /app/shared
-ENV VITE_API_URL=${VITE_API_URL}
+ARG VITE_API_URL
 
 RUN pnpm build
 
