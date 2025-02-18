@@ -602,30 +602,48 @@ export class Game extends Scene {
     const centerRow = Math.floor(Math.random() * (validEndRow - validStartRow)) + validStartRow;
     const centerCol = Math.floor(Math.random() * (validEndCol - validStartCol)) + validStartCol;
 
-    // batch update all cells in the pattern
+    // create a copy of the current grid state
+    const newGridState = this.grid.map((row) =>
+      row.map((cell) => ({
+        isAlive: cell.isAlive,
+        ownerId: cell.ownerId,
+        color: cell.color,
+      })),
+    );
+
+    // update the grid state copy with pattern cells
     pattern.cells.forEach(([rowOffset, colOffset]) => {
       const row = centerRow + rowOffset;
       const col = centerCol + colOffset;
 
       // ensure we're within grid bounds
       if (row >= 0 && row < GRID_ROWS && col >= 0 && col < GRID_COLS) {
-        const cell = this.grid[row][col];
-        cell.isAlive = true;
-
-        if (this.currentPlayerId) {
-          const player = this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId);
-          cell.ownerId = this.currentPlayerId;
-          cell.color = player?.color;
-        }
-
-        this.updateCellVisuals(cell);
+        newGridState[row][col] = {
+          isAlive: true,
+          ownerId: this.currentPlayerId,
+          color: this.currentPlayerId
+            ? this.roomMetadata?.players.find((p) => p.id === this.currentPlayerId)?.color
+            : undefined,
+        };
       }
     });
+
+    // apply all updates to the actual grid at once
+    for (let row = 0; row < GRID_ROWS; row++) {
+      for (let col = 0; col < GRID_COLS; col++) {
+        const newState = newGridState[row][col];
+        const cell = this.grid[row][col];
+        cell.isAlive = newState.isAlive;
+        cell.ownerId = newState.ownerId;
+        cell.color = newState.color;
+        this.updateCellVisuals(cell);
+      }
+    }
 
     // update population count once after all cells are placed
     this.updatePopulationCount();
 
-    // emit grid update to other players
+    // emit a single grid update to other players
     if (this.roomMetadata) {
       socketService.updateGameState(
         this.roomMetadata.id,
